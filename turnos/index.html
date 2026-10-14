@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F5F4F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B0B10" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Turnos DJ">
+<meta name="description" content="Turnos, cachés e ingresos de Clement y DJ Bota, sincronizados con Google Calendar.">
+<title>Turnos DJ</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- Pantalla de selección de panel -->
+<div id="selector">
+  <div class="blob a"></div><div class="blob b"></div>
+  <div class="sel-box">
+    <div class="eb">🎧 NEXORA · TURNOS</div>
+    <h1>¿Qué panel quieres ver?</h1>
+    <p>Cada turno que añadas quedará asignado a quien elijas aquí.</p>
+    <div class="owners">
+      <button class="owner" style="--oc:#4C8DFF" data-act="own" data-own="Clement">
+        <span class="ring"><span class="in c"><img src="img/clement.png" alt="Logo DJ Clement"></span></span>
+        <span class="nm">CLEMENT</span><span class="ro">Turnos en solitario</span>
+      </button>
+      <button class="owner" style="--oc:#F2B84B" data-act="own" data-own="DJ Bota">
+        <span class="ring"><span class="in b"><img src="img/bota.png" alt="Logo DJ Bota"></span></span>
+        <span class="nm">DJ BOTA</span><span class="ro">Turnos de DJ Bota</span>
+      </button>
+    </div>
+    <div class="sel-foot" id="selFoot"></div>
+  </div>
+</div>
+
+<!-- Panel -->
+<div id="app"><div id="view"></div></div>
+<button class="fab hidden" id="fab" data-act="add">＋ Añadir turno</button>
+
+<!-- Formulario de turno -->
+<div class="overlay" id="modal">
+  <div class="modal">
+    <h3 id="mTitle">Nuevo turno</h3>
+    <p class="ms" id="mSub"></p>
+    <form id="form" autocomplete="off">
+      <div class="f"><label for="f_title">Título (el que verás en el calendario)</label><input id="f_title" required placeholder="DJ Torralba"></div>
+      <div class="f"><label for="f_dj">DJ / pertenece a</label>
+        <select id="f_dj"><option value="Clement">CLEMENT</option><option value="DJ Bota">DJ BOTA</option><option value="Two Generation's">TWO GENERATION'S (aparece en los dos)</option></select></div>
+      <div class="r2">
+        <div class="f"><label for="f_lugar">Lugar (ciudad/pueblo)</label><input id="f_lugar" required placeholder="Torralba"></div>
+        <div class="f"><label for="f_local">Local / sala</label><input id="f_local" required placeholder="Sala Euforia"></div>
+      </div>
+      <div class="r2">
+        <div class="f"><label for="f_date">Fecha</label><input id="f_date" type="date" required></div>
+        <div class="f"><label for="f_cache">Caché (€)</label><input id="f_cache" type="number" min="0" step="any" inputmode="decimal" required placeholder="200"></div>
+      </div>
+      <div class="r2">
+        <div class="f"><label for="f_start">Hora inicio</label><input id="f_start" type="time" required></div>
+        <div class="f"><label for="f_end">Hora fin</label><input id="f_end" type="time" required></div>
+      </div>
+      <div class="f"><label for="f_llevar">Qué llevar</label><input id="f_llevar" placeholder="Cascos y USB"></div>
+      <div class="ferr" id="ferr"></div>
+      <div class="mact">
+        <button type="button" class="btn" data-act="closeModal">Cancelar</button>
+        <button type="submit" class="btn primary" id="fSave">Guardar turno</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Hojas (ajustes / elegir calendario) -->
+<div class="overlay" id="sheet"><div class="modal" id="sheetBody"></div></div>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
