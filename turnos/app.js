@@ -595,7 +595,7 @@ function greeting() {
 function viewPanel() {
   const list = panelItems(), now = Date.now(), today = todayStr();
   const up = list.filter(i => i.endMs >= now).sort(byStart);
-  const who = owner === 'Clement' ? `<img class="wm" src="img/clement.png" alt="CLEMENT">` : `<img class="disc" src="img/bota.png" alt=""><span class="nm">DJ BOTA</span>`;
+  const who = owner === 'Clement' ? `<img class="wm" src="img/clement.png" alt="CLEMENT">` : `<img class="wm two" src="img/djbota.png" alt="DJ BOTA">`;
   const periods = [['mes', 'Este mes'], ['año', 'Este año'], ['todo', 'Todo']];
   return `<header class="glass topbar"><button class="who" data-act="switch" aria-label="Cambiar de agenda (ahora: ${DISPLAY[owner]})">${who}<span class="sw">${ICON.swap}</span></button>
       <nav class="tabs" aria-label="Secciones">${SECTIONS.map(([k, t, ic]) => `<button data-act="go" data-to="${k}" class="${activeSec === k ? 'on' : ''}">${ICON[ic]}${t}</button>`).join('')}</nav>
