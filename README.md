@@ -19,7 +19,8 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - La primera vez la app pregunta **«¿De quién es esta cuenta?»** (CLEMENT o DJ BOTA). Si tu socio ya lo eligió, se deduce sola. Se puede cambiar en *Ajustes*.
 - **Cada turno se guarda en el calendario de su DJ**: los de CLEMENT en el de CLEMENT y los de DJ BOTA en el de DJ BOTA, los apunte quien los apunte. Los de **Two Generation's se copian en los dos** (añadirlos, cambiarlos o borrarlos en uno se refleja en el otro, también desde Google Calendar).
 - **Los dos veis los turnos de los dos**: en el panel de tu socio salen los turnos de su calendario en cuanto él inicie sesión en la app y te lo comparta. Si solo te deja verlo, sus turnos salen como «Solo ver».
-- **Compartir desde la app**: *Ajustes → Compartir con tu socio* → escribe su correo → *Compartir*. A tu socio le llega un correo de Google en el que tiene que pulsar «Añadir este calendario». Cada uno lo hace con el otro.
+- **Compartir desde la app**: *Ajustes → Compartir con tu socio* → escribe su correo → *Compartir* → *Enviar por WhatsApp*. Cuando tu socio abre ese enlace con su cuenta en la app, tu calendario se añade al momento (no hace falta el correo de Google) y la app le ofrece compartirte el suyo con un toque.
+- **Hasta que no se comparte, cada uno solo ve lo de su calendario**: los turnos de Two Generation's que estén en el calendario del otro no salen hasta abrir su enlace. La app avisa con un recuadro «Conecta con el calendario de…».
 - Si en tu calendario quedaron turnos de tu socio (de cuando había un solo calendario), *Ajustes* ofrece **pasarlos al suyo**.
 
 ## Avisos en el móvil

@@ -48,7 +48,8 @@ const LS = { data: 'turnos.data.v1', conn: 'turnos.gcal.connected', tok: 'turnos
   calname: 'turnos.gcal.calendarName', last: 'turnos.gcal.lastSync', user: 'turnos.gcal.user',
   partner: 'turnos.gcal.partnerId', tomb: 'turnos.gcal.tgDeleted', scopev: 'turnos.gcal.scopeVersion',
   me: 'turnos.gcal.me', partnerDJ: 'turnos.gcal.partnerDJ', partnerW: 'turnos.gcal.partnerWritable',
-  rem: 'turnos.gcal.reminders', pmail: 'turnos.gcal.partnerEmail' };
+  rem: 'turnos.gcal.reminders', pmail: 'turnos.gcal.partnerEmail',
+  join: 'turnos.gcal.joinCalendar', joinFrom: 'turnos.gcal.joinFrom' };   /* enlace de invitación del socio (no es de la cuenta) */
 /* Lo que es de cada cuenta: se borra al cambiar de cuenta o cerrar sesión */
 const ACCOUNT_KEYS = ['cal', 'calname', 'last', 'partner', 'tomb', 'me', 'partnerDJ', 'partnerW', 'rem', 'pmail'];
 
@@ -220,8 +221,23 @@ const isNamed = (c, n) => normName(c.name) === normName(n) || normName(c.summary
 /* Tu calendario «turnos_dj» (el tuyo, no uno compartido): lo usa si existe, renombra el antiguo «Nexora» o lo crea.
    Además busca el «turnos_dj» que te haya compartido tu socio, para copiar ahí los turnos de Two Generation's. */
 let partnerCal = null;
+let joinWarned = false, joinedFrom = '';
 async function ensureCalendar() {
-  const cals = (await listCalendars()).filter(c => c.writer || isNamed(c, CALENDAR_NAME)), cached = store.get(LS.cal);
+  let all = await listCalendars();
+  /* Enlace de invitación de tu socio (#socio=…): añade su calendario a tu Google Calendar sin esperar al correo de Google */
+  const join = store.get(LS.join);
+  if (join) {
+    let hit = all.find(c => c.id === join);
+    if (!hit) {
+      try { await gfetch(`${CAL_API}/users/me/calendarList`, jsonOpts('POST', { id: join })); all = await listCalendars(); hit = all.find(c => c.id === join); }
+      catch (e) { if (e.auth) throw e; console.warn('invitación', e); }
+    }
+    if (hit && hit.owner) { store.del(LS.join); store.del(LS.joinFrom); toast('Ese enlace es de tu propio calendario: envíaselo a tu socio'); }
+    else if (hit) { store.set(LS.partner, join); joinedFrom = store.get(LS.joinFrom) || '*'; store.del(LS.join); store.del(LS.joinFrom); toast('Listo: ya ves el calendario de tu socio'); }
+    else if (!joinWarned) { joinWarned = true; toast('Aún no tienes acceso al calendario de tu socio: tiene que pulsar «Compartir» con tu correo en los Ajustes de su app'); }
+  }
+  const pid = store.get(LS.partner), legacy = c => LEGACY_NAMES.some(n => isNamed(c, n));
+  const cals = all.filter(c => c.writer || isNamed(c, CALENDAR_NAME) || legacy(c) || c.id === pid), cached = store.get(LS.cal);
   let own = cals.find(c => c.id === cached && c.owner) || cals.find(c => c.owner && isNamed(c, CALENDAR_NAME));
   if (!own) {
     const old = cals.find(c => c.owner && LEGACY_NAMES.some(n => isNamed(c, n)));
@@ -236,8 +252,9 @@ async function ensureCalendar() {
   }
   if (own.id !== cached) store.set(LS.cal, own.id);
   store.set(LS.calname, own.name); store.set(LS.rem, JSON.stringify(own.reminders || []));
-  const cands = cals.filter(c => c.id !== own.id && !c.owner && isNamed(c, CALENDAR_NAME));
-  partnerCal = cands.find(c => c.writer) || cands[0] || cals.find(c => c.id !== own.id && c.id === store.get(LS.partner)) || null;
+  /* Calendario del socio: el del enlace de invitación, uno compartido llamado «turnos_dj» o su antiguo «Nexora» */
+  const others = cals.filter(c => c.id !== own.id && !c.owner), named = others.filter(c => isNamed(c, CALENDAR_NAME)), old = others.filter(legacy);
+  partnerCal = others.find(c => c.id === pid) || named.find(c => c.writer) || named[0] || old.find(c => c.writer) || old[0] || null;
   if (partnerCal) { store.set(LS.partner, partnerCal.id); store.set(LS.partnerW, partnerCal.writer ? '1' : '0'); }
   else { store.del(LS.partner); store.del(LS.partnerW); }
   return own;
@@ -408,7 +425,7 @@ async function sync(interactive = false) {
   if (!navigator.onLine) { setSync('offline'); return; }
   if (syncing) { again = true; return; }
   const tok = await getToken(interactive);
-  if (!tok) { setSync('reauth'); return; }
+  if (!tok) { setSync('reauth'); if (store.get(LS.join) && !joinWarned) { joinWarned = true; toast('Toca el indicador de estado para reconectar y añadir el calendario de tu socio'); } return; }
   syncing = true; setSync('syncing');
   try {
     const own = await ensureCalendar(), calId = own.id;
@@ -433,7 +450,9 @@ async function sync(interactive = false) {
     setSync('ok');
     if (before !== after) render();
     renderSelFoot();
-    if (askWho && !whoShown && !$('#modal').classList.contains('show') && !$('#sheet').classList.contains('show')) { whoShown = true; openWho(); }
+    const free = !$('#modal').classList.contains('show') && !$('#sheet').classList.contains('show');
+    if (joinedFrom && free) { const f = joinedFrom; joinedFrom = ''; offerShareBack(f); }
+    else if (askWho && !whoShown && free) { whoShown = true; openWho(); }
   } catch (e) {
     saveLocal();
     if (e.auth) setSync('reauth');
@@ -699,7 +718,8 @@ function greeting() {
 function viewPanel() {
   const list = panelItems(), now = Date.now(), today = todayStr();
   const up = list.filter(i => i.endMs >= now).sort(byStart);
-  const mine = !myDJ() || owner === myDJ(), waiting = isConnected() && !mine && !store.get(LS.partner);
+  const mine = !myDJ() || owner === myDJ(), linked = !!store.get(LS.partner), pd = partnerDJ();
+  const waiting = isConnected() && !linked && !mine, waitingOwn = isConnected() && !linked && mine && !!myDJ();
   const who = owner === 'Clement' ? `<img class="wm" src="img/clement.png" alt="CLEMENT">` : `<img class="wm two" src="img/djbota.png" alt="DJ BOTA">`;
   const periods = [['mes', 'Este mes'], ['año', 'Este año'], ['todo', 'Todo']];
   return `<header class="glass topbar"><button class="who" data-act="switch" aria-label="Cambiar de agenda (ahora: ${DISPLAY[owner]})">${who}<span class="sw">${ICON.swap}</span></button>
@@ -709,7 +729,8 @@ function viewPanel() {
       <div class="hello anchor o-hello" id="inicio"><div><h1>${mine ? `${greeting()}, ${DISPLAY[owner]}` : `Agenda de ${DISPLAY[owner]}`}</h1><p>${cap(dateLabel(today))}. ${up.length ? `${mine ? 'Tienes' : 'Tiene'} ${plural(up.length, 'turno próximo', 'turnos próximos')}.` : `${mine ? 'No tienes' : 'No tiene'} turnos próximos.`}</p></div>
         <div class="glass seg" role="tablist" aria-label="Periodo de las cifras">${periods.map(([k, t]) => `<button role="tab" aria-selected="${period === k}" class="${period === k ? 'on' : ''}" data-act="period" data-k="${k}">${t}</button>`).join('')}</div></div>
       ${!isConnected() ? `<div class="glass connect o-connect"><div><b>Conecta tu Google Calendar</b><span>Inicia sesión: tus turnos se guardan en tu calendario «turnos_dj» (si no existe, se crea).</span></div><button class="btn primary" data-act="connect">Iniciar sesión con Google</button></div>`
-        : waiting ? `<div class="glass hint o-connect"><div><b>Aún no ves los turnos de ${DISPLAY[owner]}</b><span>Saldrán aquí en cuanto ${DISPLAY[owner]} inicie sesión en la app y te comparta su calendario «${CALENDAR_NAME}». Mientras, ves los de Two Generation's y los que estén en tu calendario.</span></div><button class="btn" data-act="settings">Ver cómo</button></div>` : ''}
+        : waiting ? `<div class="glass hint o-connect"><div><b>Aún no ves los turnos de ${DISPLAY[owner]}</b><span>Saldrán aquí en cuanto ${DISPLAY[owner]} te comparta su calendario «${CALENDAR_NAME}» desde su app y abras el enlace que te envíe. Mientras, ves los que estén en tu calendario.</span></div><button class="btn" data-act="settings">Ver cómo</button></div>`
+        : waitingOwn ? `<div class="glass hint o-connect"><div><b>Conecta con el calendario de ${DISPLAY[pd]}</b><span>Cuando ${DISPLAY[pd]} te comparta su calendario «${CALENDAR_NAME}» (en su app: Ajustes → Compartir con tu socio) y abras el enlace que te envíe, verás sus turnos y los de Two Generation's de los dos.</span></div><button class="btn" data-act="settings">Ver cómo</button></div>` : ''}
       <div class="o-kpis">${kpisHTML(list, now)}</div>
       <div class="c-8 o-chart">${chartHTML(list, now)}</div>
       <div class="c-4 o-pass">${passHTML(up[0], today, now)}</div>
@@ -849,7 +870,7 @@ function openSettings() {
     ${clash ? `<p class="note warn-note">Tu socio también ha dicho que es ${DISPLAY[me]}. Uno de los dos tiene que cambiarlo en «Esta cuenta es de».</p>` : ''}
 
     <h4 class="sh">Compartir con tu socio</h4>
-    <p class="note">Para que ${pd ? DISPLAY[pd] : 'tu socio'} vea tus turnos (y se copien los de Two Generation's), comparte con él tu calendario. Le llegará un correo de Google: tiene que pulsar «Añadir este calendario». Él tiene que hacer lo mismo contigo.</p>
+    <p class="note">Para que ${pd ? DISPLAY[pd] : 'tu socio'} vea tus turnos (y los de Two Generation's), escribe su correo, pulsa «Compartir» y envíale el enlace que te da la app: al abrirlo, su app añade tu calendario. ${store.get(LS.partner) ? '' : `Para ver los suyos, ${pd ? DISPLAY[pd] : 'tu socio'} tiene que hacer lo mismo contigo desde su app.`}</p>
     <form class="share" id="shareForm"><input id="p_email" type="email" inputmode="email" autocomplete="email" placeholder="Correo de tu socio" value="${esc(store.get(LS.pmail) || '')}" aria-label="Correo de tu socio"><button class="btn primary" type="submit">Compartir</button></form>
     <div class="note" id="shareList"></div>
     ${misplaced ? `<div class="kv"><span>Tienes ${plural(misplaced, 'turno', 'turnos')} de ${DISPLAY[pd]} en tu calendario</span><span><button class="btn small" data-act="movePartner">Pasarlos al suyo</button></span></div>` : ''}
@@ -871,11 +892,12 @@ async function loadShares() {
     const j = await (await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}/acl`)).json();
     const me = (currentUser()?.email || '').toLowerCase();
     const l = (j.items || []).filter(a => a.scope?.type === 'user' && a.role !== 'owner' && a.scope.value.toLowerCase() !== me);
-    if ($('#shareList')) $('#shareList').innerHTML = l.length ? `Compartido con: ${l.map(a => `<b>${esc(a.scope.value)}</b> (${a.role === 'writer' ? 'puede editar' : 'solo ver'})`).join(', ')}` : 'Todavía no lo has compartido con nadie.';
+    if ($('#shareList')) $('#shareList').innerHTML = l.length ? `Compartido con: ${l.map(a => `<b>${esc(a.scope.value)}</b> (${a.role === 'writer' ? 'puede editar' : 'solo ver'})`).join(', ')} <button class="linkbtn" data-act="invite">Enviar enlace</button>` : 'Todavía no lo has compartido con nadie.';
   } catch (e) { if (box.isConnected) box.textContent = ''; }
 }
-async function shareWithPartner() {
-  const email = ($('#p_email')?.value || '').trim().toLowerCase();
+/* Comparte tu calendario con tu socio (puede hacer cambios) y te da el enlace para que lo añada al momento */
+async function shareWith(email) {
+  email = String(email || '').trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Escribe el correo de Google de tu socio'); $('#p_email')?.focus(); return; }
   if (email === (currentUser()?.email || '').toLowerCase()) { toast('Ese es tu correo: escribe el de tu socio'); return; }
   const tok = await getToken(true);                                    /* primera instrucción: conserva el gesto del toque */
@@ -883,8 +905,42 @@ async function shareWithPartner() {
   if (!tok || !ownId) { toast(tok ? 'Sincroniza primero tu calendario' : LOGIN_FAIL); return; }
   try {
     await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}/acl?sendNotifications=true`, jsonOpts('POST', { role: 'writer', scope: { type: 'user', value: email } }));
-    store.set(LS.pmail, email); toast(`Compartido con ${email}. Le llegará un correo de Google para añadirlo.`); loadShares();
+    store.set(LS.pmail, email); openInvite(email);
   } catch (e) { toast(e.auth ? 'Vuelve a conectar con Google e inténtalo otra vez' : 'No se pudo compartir: revisa el correo e inténtalo de nuevo'); }
+}
+const shareWithPartner = () => shareWith($('#p_email')?.value);
+/* Enlace de invitación: abre la app y añade tu calendario en la cuenta de tu socio */
+function inviteLink() {
+  const q = new URLSearchParams({ socio: store.get(LS.cal) || '', de: currentUser()?.email || '' });
+  return `${location.origin}${location.pathname}#${q}`;
+}
+function openInvite(email) {
+  const link = inviteLink(), text = `Te he compartido mi calendario de Turnos DJ. Abre este enlace para verlo en la app: ${link}`;
+  openSheet(`<h3>${email ? `Compartido con ${esc(email)}` : 'Enlace para tu socio'}</h3>
+    <p class="ms">Envíale este enlace: al abrirlo con su cuenta en la app, verá tus turnos al momento. También le llega un correo de Google, pero con el enlace no le hace falta.</p>
+    <div class="mact" style="flex-wrap:wrap"><a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button class="btn" data-act="copyInvite">Copiar enlace</button><button class="btn" data-act="closeSheet">Hecho</button></div>`);
+}
+function copyInvite() {
+  const link = inviteLink();
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(link).then(() => toast('Enlace copiado'), () => prompt('Copia este enlace y envíaselo a tu socio:', link));
+  else prompt('Copia este enlace y envíaselo a tu socio:', link);
+}
+/* Al entrar con el enlace de tu socio: te propone compartirle también tu calendario */
+async function offerShareBack(from) {
+  const ownId = store.get(LS.cal), me = (currentUser()?.email || '').toLowerCase(), em = from === '*' ? '' : from.toLowerCase();
+  if (!ownId || em === me) return;
+  if (em) {
+    try {
+      const j = await (await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}/acl`)).json();
+      if ((j.items || []).some(a => a.scope?.type === 'user' && a.scope.value.toLowerCase() === em && a.role !== 'reader' && a.role !== 'freeBusyReader')) return;   /* ya lo tiene */
+    } catch (e) { /* si no se puede comprobar, se pregunta igual */ }
+  }
+  const pd = partnerDJ();
+  openSheet(`<h3>Ya ves el calendario de ${pd ? DISPLAY[pd] : 'tu socio'}</h3>
+    <p class="ms">¿Le compartes también el tuyo${em ? ` (${esc(em)})` : ''}? Así verá tus turnos y los de Two Generation's estarán en los dos calendarios.</p>
+    ${em ? `<div class="mact"><button class="btn" data-act="closeSheet">Ahora no</button><button class="btn primary" data-act="shareBack" data-email="${esc(em)}">Compartir mi calendario</button></div>`
+      : `<form class="share" id="shareForm"><input id="p_email" type="email" inputmode="email" autocomplete="email" placeholder="Correo de tu socio" aria-label="Correo de tu socio"><button class="btn primary" type="submit">Compartir</button></form>
+         <div class="mact"><button class="btn" data-act="closeSheet">Ahora no</button></div>`}`);
 }
 async function toggleReminder(m) {
   const tok = await getToken(true), calId = store.get(LS.cal);               /* primera instrucción: conserva el gesto del toque */
@@ -948,6 +1004,9 @@ document.addEventListener('click', e => {
     case 'whoAsk': openWho(); break;
     case 'rem': toggleReminder(+t.dataset.m); break;
     case 'movePartner': movePartnerTurnos(); break;
+    case 'shareBack': shareWith(t.dataset.email); break;
+    case 'invite': openInvite(''); break;
+    case 'copyInvite': copyInvite(); break;
     case 'add': openForm(null, d); break;
     case 'quick': openQuick(d); break;
     case 'edit': { const it = items.find(x => x.id === id); if (it) { if (canEdit(it)) openForm(it); else toast(RO_MSG); } break; }
@@ -969,6 +1028,19 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal
 /* ───────────── arranque ───────────── */
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(() => {});
 syncState = isConnected() ? 'pending' : 'local';
+/* Enlace de invitación de tu socio: #socio=<id de su calendario>&de=<su correo>.
+   Se lee al abrir la app y también si la app ya estaba abierta (solo cambia el «#…» de la dirección). */
+function readInvite(live) {
+  if (!/(^|[#&])socio=/.test(location.hash)) return;
+  const q = new URLSearchParams(location.hash.slice(1)), id = q.get('socio');
+  if (id) { store.set(LS.join, id); if (q.get('de')) store.set(LS.joinFrom, q.get('de')); else store.del(LS.joinFrom); }
+  history.replaceState(null, '', location.pathname + location.search);
+  joinWarned = false;
+  if (!isConnected()) setTimeout(() => toast('Inicia sesión con Google para ver el calendario de tu socio'), 700);
+  else if (live) sync(false);
+}
+readInvite(false);
+window.addEventListener('hashchange', () => readInvite(true));
 renderSelFoot();
 window.addEventListener('online', () => { if (isConnected()) sync(false); });
 window.addEventListener('offline', () => { if (isConnected()) setSync('offline'); });

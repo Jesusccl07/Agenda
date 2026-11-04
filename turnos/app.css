@@ -133,6 +133,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
 .btn.small{padding:8px 13px;font-size:13px}
 .btn.danger{color:var(--danger)}
 .btn svg{width:16px;height:16px}
+a.btn{text-decoration:none}
 
 /* ───── Conexión ───── */
 .connect{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 20px}
