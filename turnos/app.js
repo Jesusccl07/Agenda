@@ -108,6 +108,7 @@ function parseDesc(desc) {
       const who = normDJ(v[1]), val = v[2].trim();
       if (PANELS.includes(who) && val && val !== '-') o.parts[who] = parseMoney(val);
     }
+    else if ((v = take(line, /^🧰[️\s]*Equipo\s*:\s*(.*)$/i)) !== null) { if (v && v !== '-') o.team = parseMoney(v); }   /* lo que se queda el equipo */
     else if (/^⏰[️\s]*Horario\s*:/i.test(line) || /^🕐[️\s]*Duraci[oó]n\s*:/i.test(line)) { /* se calculan solos */ }
     else if ((v = take(line, /^🎒[️\s]*Llevar\s*:\s*(.*)$/i)) !== null) o.llevar = v === '-' ? '' : v;
     else if (line) o.extra.push(line);
@@ -127,12 +128,13 @@ function fromEvent(ev) {
   let lugar = d.lugar, local = d.local;
   if ((!lugar || !local) && ev.location) { const p = ev.location.split(','); if (!local) local = p[0].trim(); if (!lugar) lugar = p.slice(1).join(',').trim() || p[0].trim(); }
   return { id: ev.id, title: ev.summary || 'Turno', dj: d.dj, lugar, local, llevar: d.llevar, cache: d.cache, extra: d.extra,
-    parts: Object.keys(d.parts).length ? d.parts : undefined,
+    parts: Object.keys(d.parts).length ? d.parts : undefined, team: d.team > 0 ? d.team : undefined,
     date, start, end, startMs, endMs, allDay, rev: 0, tg: ev.extendedProperties?.shared?.tg || '' };
 }
 function descOf(it) {
   const lines = [`🎤 DJ: ${it.dj}`, `📍 Lugar: ${it.lugar}`, `🏢 Local: ${it.local}`, `💰 Caché: ${numStr(it.cache)}€`];
   if (it.dj === TWO_GEN && it.parts) for (const d of PANELS) if (Number.isFinite(it.parts[d])) lines.push(`💸 Parte ${PART_NAME[d]}: ${numStr(it.parts[d])}€`);
+  if (it.team > 0) lines.push(`🧰 Equipo: ${numStr(it.team)}€`);
   lines.push(`⏰ Horario: ${it.start} - ${it.end}`, `🕐 Duración: ${fmtDur(it.endMs - it.startMs)}`, `🎒 Llevar: ${it.llevar || '-'}`);
   if (it.extra && it.extra.length) lines.push('', ...it.extra);
   return lines.join('\n');
@@ -169,7 +171,9 @@ const canEdit = i => i.cal !== 'p' || partnerWritable();
 const effDJ = i => KNOWN.includes(i.dj) ? i.dj : (i.cal === 'p' ? partnerDJ() : myDJ());
 /* Lo que se lleva cada DJ de un turno: el caché entero si es suyo; en Two Generation's, solo su parte (si no está puesta, nada) */
 const partOf = (i, who) => i.parts && Number.isFinite(i.parts[who]) ? i.parts[who] : null;
-const earn = (i, who = owner) => effDJ(i) === TWO_GEN ? (partOf(i, who) ?? 0) : i.cache;
+const teamOf = i => Number.isFinite(i.team) && i.team > 0 ? i.team : 0;
+/* Ganancia del DJ: en sus turnos, el caché menos lo del equipo; en Two Generation's, solo su parte */
+const earn = (i, who = owner) => effDJ(i) === TWO_GEN ? (partOf(i, who) ?? 0) : Math.max(0, i.cache - teamOf(i));
 /* Un turno sale en el panel de su DJ; los de Two Generation's salen en los dos; sin DJ conocido, en los dos (con aviso) */
 const inPanel = i => { if (i.pending === 'delete') return false; const d = effDJ(i); return !d || d === TWO_GEN || d === owner; };
 const panelItems = () => items.filter(inPanel);
@@ -551,6 +555,7 @@ const ICON = {
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   avg: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8M15 7h6v6"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
+  down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 1 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
 };
 const EQ = '<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>';
@@ -567,9 +572,10 @@ let period = store.get('turnos.period', 'mes'), tableTab = 'proximos', tableQ = 
 const goalKey = () => 'turnos.goal.' + owner;
 
 /* Debajo del caché de un turno de Two Generation's: cuánto se lleva cada uno */
-const partsHTML = i => effDJ(i) !== TWO_GEN ? ''
-  : PANELS.some(d => partOf(i, d) !== null)
-    ? `<span class="parts">${PANELS.map(d => `<span class="pp">${DISPLAY[d]} ${partOf(i, d) === null ? '—' : euro(partOf(i, d))}</span>`).join(' · ')}</span>`
+const partsHTML = i => effDJ(i) !== TWO_GEN
+  ? (teamOf(i) ? `<span class="parts team"><span class="pp">Equipo ${euro(teamOf(i))}</span></span>` : '')
+  : (PANELS.some(d => partOf(i, d) !== null) || teamOf(i))
+    ? `<span class="parts">${[...PANELS.map(d => `<span class="pp">${DISPLAY[d]} ${partOf(i, d) === null ? '—' : euro(partOf(i, d))}</span>`), teamOf(i) ? `<span class="pp team">Equipo ${euro(teamOf(i))}</span>` : ''].filter(Boolean).join(' · ')}</span>`
     : `<span class="parts miss">Falta el reparto</span>`;
 /* Botones de modificar / borrar (los turnos del socio solo se pueden ver si no te deja editar su calendario) */
 const RO_MSG = 'Este turno está en el calendario de tu socio y solo te ha dado permiso para verlo.';
@@ -734,6 +740,73 @@ function goalHTML(list, now) {
       <div class="in"><div><b>${Math.round(got / goal * 100)}%</b><span>conseguido</span></div></div></div>
     <div class="goal-t"><b>${euro(got)}</b><p>de ${euro(goal)}${left ? `: faltan ${euro(left)}` : ': ¡objetivo cumplido!'}</p><button class="btn small" data-act="goal">Cambiar objetivo</button></div></div></section>`;
 }
+/* ── Ganancias del año (de cada DJ) e ingresos del equipo (de los dos) ── */
+let yearSel = +todayStr().slice(0, 4);
+const inYear = (i, y) => i.pending !== 'delete' && i.date.startsWith(String(y));
+/* Todos los turnos que ve la app (tu calendario y el de tu socio), sin repetir los de Two Generation's */
+const allItems = () => items.filter(i => i.pending !== 'delete');
+function yearData(y, who = owner) {
+  const now = Date.now(), mine = panelItems().filter(i => inYear(i, y)).sort(byStart);
+  const got = mine.reduce((s, i) => s + (i.endMs < now ? earn(i, who) : 0), 0), plan = mine.reduce((s, i) => s + (i.endMs >= now ? earn(i, who) : 0), 0);
+  const team = allItems().filter(i => inYear(i, y) && teamOf(i)).sort(byStart);
+  const months = Array.from({ length: 12 }, (_, m) => { const k = `${y}-${pad(m + 1)}`;
+    return { k, dj: mine.filter(i => i.date.startsWith(k)).reduce((s, i) => s + earn(i, who), 0), team: team.filter(i => i.date.startsWith(k)).reduce((s, i) => s + teamOf(i), 0) }; });
+  return { mine, got, plan, total: got + plan, team, teamTotal: team.reduce((s, i) => s + teamOf(i), 0), months,
+    missing: mine.filter(i => effDJ(i) === TWO_GEN && partOf(i, who) === null).length };
+}
+const yearNav = () => `<div class="nav"><button class="iconbtn" data-act="yearPrev" aria-label="Año anterior">${ICON.left}</button><button class="iconbtn" data-act="yearNext" aria-label="Año siguiente">${ICON.right}</button></div>`;
+function yearHTML(d) {
+  const best = d.months.reduce((a, m) => m.dj > a.dj ? m : a, { dj: 0 }), max = Math.max(1, ...d.months.map(m => m.dj));
+  return `<section class="glass panel anchor" id="anual"><div class="cal-h"><div class="ph" style="margin:0"><div><h3>Ganancias de ${DISPLAY[owner]} en ${yearSel}</h3><p>Sus turnos (menos lo del equipo) y su parte de Two Generation's</p></div></div>${yearNav()}</div>
+    <div class="yr-big" data-count="${d.total}" data-fmt="euro">${euro(d.total)}</div>
+    <div class="yr-row"><span><b>${euro(d.got)}</b> cobrado</span><span><b>${euro(d.plan)}</b> previsto</span><span><b>${d.mine.length}</b> ${d.mine.length === 1 ? 'turno' : 'turnos'}</span>${best.dj ? `<span>Mejor mes: <b>${MON_L[+best.k.slice(5) - 1]}</b></span>` : ''}</div>
+    <div class="yr-bars" aria-hidden="true">${d.months.map(m => `<i style="height:${m.dj / max * 100}%" title="${MON_L[+m.k.slice(5) - 1]}: ${euro(m.dj)}"></i>`).join('')}</div>
+    ${d.missing ? `<p class="note warn-note">${plural(d.missing, 'turno', 'turnos')} de Two Generation's sin reparto: no se suman hasta que pongas cuánto se lleva ${DISPLAY[owner]}.</p>` : ''}
+    <button class="btn small" data-act="excel">${ICON.down}Descargar Excel</button></section>`;
+}
+function teamHTML(d) {
+  const by = k => d.team.filter(i => effDJ(i) === k).reduce((s, i) => s + teamOf(i), 0);
+  return `<section class="glass panel team-card"><div class="cal-h"><div class="ph" style="margin:0"><div><h3>Ingresos del equipo en ${yearSel}</h3><p>Lo que se queda el equipo de los turnos de los dos</p></div></div>${yearNav()}</div>
+    <div class="yr-big team" data-count="${d.teamTotal}" data-fmt="euro">${euro(d.teamTotal)}</div>
+    <div class="yr-row"><span>CLEMENT <b>${euro(by('Clement'))}</b></span><span>DJ BOTA <b>${euro(by('DJ Bota'))}</b></span><span>Two Generation's <b>${euro(by(TWO_GEN))}</b></span></div>
+    ${isConnected() && !store.get(LS.partner) ? `<p class="note">Faltan los turnos de ${DISPLAY[partnerDJ()] || 'tu socio'} hasta que conectéis los calendarios.</p>` : ''}
+    <button class="btn small" data-act="excel">${ICON.down}Descargar Excel</button></section>`;
+}
+/* Excel: hoja con las ganancias del DJ, hoja del equipo y resumen por meses (se descarga la librería solo al pulsar) */
+let xlsxLib = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return xlsxLib || (xlsxLib = new Promise((ok, ko) => {
+    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => ok(window.XLSX); s.onerror = () => { xlsxLib = null; ko(new Error('xlsx')); }; document.head.appendChild(s);
+  }));
+}
+async function downloadExcel() {
+  const d = yearData(yearSel), who = DISPLAY[owner], now = Date.now(), r2 = n => Math.round(n * 100) / 100;
+  const tipo = i => effDJ(i) === TWO_GEN ? "Two Generation's" : (DISPLAY[effDJ(i)] || 'Sin DJ');
+  const dj = [[`Ganancias de ${who} en ${yearSel}`], [], ['Fecha', 'Día', 'Turno', 'Local', 'Lugar', 'Tipo', 'Caché total (€)', 'Equipo (€)', `Ganancia ${who} (€)`, 'Estado'],
+    ...d.mine.map(i => [i.date.split('-').reverse().join('/'), DOW_L[dowOf(i.date)], i.title, i.local, i.lugar, tipo(i), r2(i.cache), r2(teamOf(i)), r2(earn(i)),
+      effDJ(i) === TWO_GEN && partOf(i, owner) === null ? 'Falta el reparto' : i.endMs < now ? 'Cobrado' : 'Previsto']),
+    [], ['', '', 'TOTAL', '', '', '', r2(d.mine.reduce((s, i) => s + i.cache, 0)), r2(d.mine.reduce((s, i) => s + teamOf(i), 0)), r2(d.total), ''],
+    ['', '', 'Cobrado', '', '', '', '', '', r2(d.got)], ['', '', 'Previsto', '', '', '', '', '', r2(d.plan)]];
+  const team = [[`Ingresos del equipo en ${yearSel}`], [], ['Fecha', 'Turno', 'Local', 'Lugar', 'De quién', 'Caché total (€)', 'Equipo (€)'],
+    ...d.team.map(i => [i.date.split('-').reverse().join('/'), i.title, i.local, i.lugar, tipo(i), r2(i.cache), r2(teamOf(i))]),
+    [], ['', 'TOTAL', '', '', '', r2(d.team.reduce((s, i) => s + i.cache, 0)), r2(d.teamTotal)]];
+  const months = [[`Resumen por meses de ${yearSel}`], [], ['Mes', `Ganancia ${who} (€)`, 'Equipo (€)'], ...d.months.map(m => [MON_L[+m.k.slice(5) - 1], r2(m.dj), r2(m.team)]), [], ['TOTAL', r2(d.total), r2(d.teamTotal)]];
+  const name = `Turnos-DJ_${who.replace(/\s+/g, '-')}_${yearSel}`;
+  try {
+    const X = await loadXLSX(), wb = X.utils.book_new();
+    [[dj, `Ganancias ${who}`, [12, 11, 26, 20, 16, 18, 15, 12, 18, 16]], [team, 'Equipo', [12, 26, 20, 16, 18, 15, 12]], [months, 'Por meses', [14, 18, 12]]].forEach(([rows, title, w]) => {
+      const ws = X.utils.aoa_to_sheet(rows); ws['!cols'] = w.map(wch => ({ wch })); X.utils.book_append_sheet(wb, ws, title.slice(0, 31));
+    });
+    X.writeFile(wb, name + '.xlsx'); toast('Excel descargado');
+  } catch (e) {                                   /* sin internet: CSV (también se abre con Excel) */
+    const csv = [...dj, [], ...team, [], ...months].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })); a.download = name + '.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast('Sin conexión: descargado en CSV (se abre con Excel)');
+  }
+}
+
 function greeting() {
   const h = +wall(Date.now()).time.slice(0, 2);
   return h >= 6 && h < 14 ? 'Buenos días' : h >= 14 && h < 21 ? 'Buenas tardes' : 'Buenas noches';
@@ -741,7 +814,7 @@ function greeting() {
 function viewPanel() {
   const list = panelItems(), now = Date.now(), today = todayStr();
   const up = list.filter(i => i.endMs >= now).sort(byStart);
-  const mine = !myDJ() || owner === myDJ(), linked = !!store.get(LS.partner), pd = partnerDJ();
+  const mine = !myDJ() || owner === myDJ(), linked = !!store.get(LS.partner), pd = partnerDJ(), yd = yearData(yearSel);
   const waiting = isConnected() && !linked && !mine, waitingOwn = isConnected() && !linked && mine && !!myDJ();
   const who = owner === 'Clement' ? `<img class="wm" src="img/clement.png" alt="CLEMENT">` : `<img class="wm two" src="img/djbota.png" alt="DJ BOTA">`;
   const periods = [['mes', 'Este mes'], ['año', 'Este año'], ['todo', 'Todo']];
@@ -762,6 +835,8 @@ function viewPanel() {
       <div class="c-5 c-half o-cal">${calendarHTML(list)}</div>
       <div class="c-4 c-half o-venues">${venuesHTML(list)}</div>
       <div class="c-3 c-half o-goal">${goalHTML(list, now)}</div>
+      <div class="c-7 c-half o-year">${yearHTML(yd)}</div>
+      <div class="c-5 c-half o-team">${teamHTML(yd)}</div>
     </div>`;
 }
 const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -844,7 +919,8 @@ function openForm(it, presetDate) {
   $('#f_date').value = it ? it.date : (presetDate || todayStr()); $('#f_cache').value = it ? numStr(it.cache) : '';
   $('#f_start').value = it && !it.allDay ? it.start : ''; $('#f_end').value = it && !it.allDay ? it.end : ''; $('#f_llevar').value = it ? it.llevar : '';
   $('#f_pc').value = it && partOf(it, 'Clement') !== null ? numStr(it.parts.Clement) : ''; $('#f_pb').value = it && partOf(it, 'DJ Bota') !== null ? numStr(it.parts['DJ Bota']) : '';
-  delete $('#f_pc').dataset.auto; delete $('#f_pb').dataset.auto; toggleSplit();
+  const tg = it && it.dj === TWO_GEN; $('#f_pe').value = tg && teamOf(it) ? numStr(it.team) : ''; $('#f_eq').value = !tg && it && teamOf(it) ? numStr(it.team) : '';
+  ['#f_pc', '#f_pb', '#f_pe'].forEach(s => delete $(s).dataset.auto); setTeam(!tg && !!(it && teamOf(it))); toggleSplit();
   $('#ferr').classList.remove('show'); $('#modal').classList.add('show'); $('#modal').setAttribute('aria-hidden', 'false'); setTimeout(() => $('#f_title').focus({ preventScroll: true }), 80);
 }
 function openQuick(date) {
@@ -859,20 +935,28 @@ function submitForm(ev) {
   const date = v('f_date'), start = v('f_start'), end = v('f_end'), cache = parseFloat(String(v('f_cache')).replace(',', '.'));
   if (!v('f_title') || !v('f_lugar') || !v('f_local') || !date || !start || !end || !isFinite(cache) || cache < 0) { err.textContent = 'Rellena todos los campos obligatorios.'; err.classList.add('show'); return; }
   /* Reparto de Two Generation's: opcional (si no lo sabéis aún, no se suma a nadie) y sin pasarse del caché */
-  let parts;
+  let parts, team;
+  const num = id => v(id) === '' ? null : parseFloat(v(id).replace(',', '.')), bad = msg => { err.textContent = msg; err.classList.add('show'); };
   if (v('f_dj') === TWO_GEN) {
-    const num = id => v(id) === '' ? null : parseFloat(v(id).replace(',', '.')), pc = num('f_pc'), pb = num('f_pb');
-    if ([pc, pb].some(x => x !== null && (!isFinite(x) || x < 0))) { err.textContent = 'Revisa lo que se lleva cada uno: tiene que ser una cantidad en euros.'; err.classList.add('show'); return; }
-    if ((pc || 0) + (pb || 0) > cache + 0.004) { err.textContent = `Las partes suman ${euro((pc || 0) + (pb || 0))}: más que el caché (${euro(cache)}).`; err.classList.add('show'); return; }
+    const pc = num('f_pc'), pb = num('f_pb'), pe = num('f_pe');
+    if ([pc, pb, pe].some(x => x !== null && (!isFinite(x) || x < 0))) return bad('Revisa lo que se lleva cada uno: tiene que ser una cantidad en euros.');
+    if ((pc || 0) + (pb || 0) + (pe || 0) > cache + 0.004) return bad(`Las partes suman ${euro((pc || 0) + (pb || 0) + (pe || 0))}: más que el caché (${euro(cache)}).`);
     if (pc !== null || pb !== null) { parts = {}; if (pc !== null) parts.Clement = pc; if (pb !== null) parts['DJ Bota'] = pb; }
+    if (pe > 0) team = pe;
+  } else if (teamOn()) {
+    const eq = num('f_eq');
+    if (eq === null || !isFinite(eq) || eq < 0) return bad('Escribe cuánto se lleva el equipo (o elige «Sin equipo»).');
+    if (eq > cache + 0.004) return bad(`Lo del equipo (${euro(eq)}) no puede ser más que el caché (${euro(cache)}).`);
+    if (eq > 0) team = eq;
   }
   const endDate = end <= start ? addDays(date, 1) : date;
   const base = editingId ? items.find(x => x.id === editingId) : null;
-  const it = { id: base ? base.id : 'tmp_' + uid(), cal: base?.cal, tg: base?.tg || '', title: v('f_title'), dj: v('f_dj'), lugar: v('f_lugar'), local: v('f_local'), llevar: v('f_llevar'), cache, parts,
+  const it = { id: base ? base.id : 'tmp_' + uid(), cal: base?.cal, tg: base?.tg || '', title: v('f_title'), dj: v('f_dj'), lugar: v('f_lugar'), local: v('f_local'), llevar: v('f_llevar'), cache, parts, team,
     extra: base ? base.extra || [] : [], date, start, end, startMs: zonedToMs(date, start), endMs: zonedToMs(endDate, end), allDay: false,
     rev: (base?.rev || 0) + 1, pending: base ? (base.pending === 'create' || String(base.id).startsWith('tmp_') ? 'create' : 'update') : 'create' };
   if (!it.cal) delete it.cal;
   if (!it.parts) delete it.parts;
+  if (!it.team) delete it.team;
   if (base) items[items.indexOf(base)] = it; else items.push(it);
   const toPartner = isConnected() && it.dj === partnerDJ() && it.dj !== myDJ();
   closeModal(); markDirty(); render();
@@ -1057,37 +1141,60 @@ document.addEventListener('click', e => {
     case 'tblTab': tableTab = t.dataset.k; tableAll = false; render(); break;
     case 'tblMore': tableAll = !tableAll; refreshTable(); break;
     case 'goal': openGoal(); break;
+    case 'yearPrev': yearSel--; render(); break;
+    case 'yearNext': yearSel++; render(); break;
+    case 'excel': downloadExcel(); break;
     case 'closeModal': closeModal(); break;
   }
 });
 $('#form').addEventListener('submit', submitForm);
 /* Reparto: se ve solo en Two Generation's; al escribir lo de uno, lo del otro se completa con lo que falta (si no lo has tocado) */
 const parseNum = s => parseFloat(String(s).replace(',', '.'));
-function toggleSplit() { $('#splitBox').hidden = $('#f_dj').value !== TWO_GEN; updateSplitSum(); }
-function updateSplitSum() {
-  const tot = parseNum($('#f_cache').value), a = $('#f_pc').value === '' ? null : parseNum($('#f_pc').value), b = $('#f_pb').value === '' ? null : parseNum($('#f_pb').value), el = $('#splitSum');
+const SPLIT = ['#f_pc', '#f_pb', '#f_pe'];
+const val = sel => $(sel).value === '' ? null : parseNum($(sel).value);
+function toggleSplit() {
+  const tg = $('#f_dj').value === TWO_GEN;
+  $('#splitBox').hidden = !tg; $('#teamBox').hidden = tg; updateSplitSum(); updateTeamSum();
+}
+/* Con equipo / sin equipo (turnos de un DJ) */
+const teamOn = () => $('#teamBox').dataset.on === '1';
+function setTeam(on) {
+  $('#teamBox').dataset.on = on ? '1' : '0'; $('#teamField').hidden = !on;
+  $$('#teamBox [data-team]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.team === (on ? '1' : '0'))));
+  updateTeamSum();
+}
+function updateTeamSum() {
+  const el = $('#teamSum'), tot = parseNum($('#f_cache').value), eq = val('#f_eq'), dj = DISPLAY[$('#f_dj').value] || 'el DJ';
   el.classList.remove('bad');
-  if (a === null && b === null) { el.textContent = 'Si aún no sabéis el reparto, déjalo vacío: no se sumará a nadie hasta que lo pongas.'; return; }
-  const s = (a || 0) + (b || 0);
+  if (!teamOn()) { el.textContent = `Todo el caché es para ${dj}.`; return; }
+  if (eq === null || !isFinite(tot)) { el.textContent = 'Escribe cuánto se queda el equipo: a ese DJ le cuenta el resto.'; return; }
+  if (eq > tot + 0.004) { el.textContent = `Es más que el caché (${euro(tot)}).`; el.classList.add('bad'); return; }
+  el.textContent = `A ${dj} le quedan ${euro(tot - eq)} y al equipo ${euro(eq)}.`;
+}
+$('#teamBox').addEventListener('click', e => { const b = e.target.closest('[data-team]'); if (!b) return; setTeam(b.dataset.team === '1'); if (teamOn()) setTimeout(() => $('#f_eq').focus(), 30); });
+$('#f_eq').addEventListener('input', updateTeamSum);
+function updateSplitSum() {
+  const tot = parseNum($('#f_cache').value), [a, b, c] = SPLIT.map(val), el = $('#splitSum');
+  el.classList.remove('bad');
+  if (a === null && b === null && c === null) { el.textContent = 'Si aún no sabéis el reparto, déjalo vacío: no se sumará a nadie hasta que lo pongas.'; return; }
+  const s = (a || 0) + (b || 0) + (c || 0);
   if (!isFinite(tot)) el.textContent = `Suman ${euro(s)}.`;
   else if (s > tot + 0.004) { el.textContent = `Suman ${euro(s)}: ${euro(s - tot)} más que el caché.`; el.classList.add('bad'); }
   else if (s < tot - 0.004) el.textContent = `Suman ${euro(s)} de ${euro(tot)}: quedan ${euro(tot - s)} sin repartir.`;
   else el.textContent = `Suman ${euro(s)}: el caché completo.`;
 }
-function autoSplit(src) {
-  const other = src.id === 'f_pc' ? $('#f_pb') : $('#f_pc'), tot = parseNum($('#f_cache').value);
-  delete src.dataset.auto;
-  if ((other.value === '' || other.dataset.auto) && isFinite(tot) && src.value !== '' && isFinite(parseNum(src.value))) { other.value = numStr(Math.max(0, tot - parseNum(src.value))); other.dataset.auto = '1'; }
-  updateSplitSum();
+/* Si solo queda una parte por rellenar (vacía o rellenada sola), se completa con lo que falta */
+function fillRest() {
+  const tot = parseNum($('#f_cache').value); if (!isFinite(tot)) return;
+  const free = SPLIT.filter(s => $(s).value === '' || $(s).dataset.auto);
+  if (free.length !== 1) return;
+  const rest = tot - SPLIT.filter(s => s !== free[0]).reduce((a, s) => a + (val(s) || 0), 0);
+  $(free[0]).value = numStr(Math.max(0, rest)); $(free[0]).dataset.auto = '1';
 }
+function autoSplit(src) { delete src.dataset.auto; if (src.value !== '' && isFinite(parseNum(src.value))) fillRest(); updateSplitSum(); }
 $('#f_dj').addEventListener('change', toggleSplit);
-$('#f_pc').addEventListener('input', e => autoSplit(e.target));
-$('#f_pb').addEventListener('input', e => autoSplit(e.target));
-$('#f_cache').addEventListener('input', () => {
-  const auto = $('#f_pc').dataset.auto ? $('#f_pc') : $('#f_pb').dataset.auto ? $('#f_pb') : null;
-  if (auto) { const src = auto.id === 'f_pc' ? $('#f_pb') : $('#f_pc'), tot = parseNum($('#f_cache').value); if (src.value !== '' && isFinite(tot)) auto.value = numStr(Math.max(0, tot - parseNum(src.value))); }
-  updateSplitSum();
-});
+SPLIT.forEach(s => $(s).addEventListener('input', e => autoSplit(e.target)));
+$('#f_cache').addEventListener('input', () => { fillRest(); updateSplitSum(); updateTeamSum(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeSheet(); } });
 
 /* ───────────── arranque ───────────── */

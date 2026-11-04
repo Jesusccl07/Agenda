@@ -71,7 +71,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
 /* En móvil y tablet primero lo urgente: el próximo turno y la semana */
 @media (max-width:999px){
   .o-hello{order:0}.o-connect{order:1}.o-pass{order:2}.o-kpis{order:3}.o-week{order:4}.o-table{order:5}
-  .o-chart{order:6}.o-cal{order:7}.o-venues{order:8}.o-goal{order:9}
+  .o-year{order:6}.o-team{order:7}.o-chart{order:8}.o-cal{order:9}.o-venues{order:10}.o-goal{order:11}
 }
 .o-goal{container-type:inline-size}
 @container (max-width:340px){.goal{flex-direction:column;text-align:center}.goal-t p{margin-bottom:10px}}
@@ -279,6 +279,23 @@ a.btn{text-decoration:none}
 .wc small{display:block;font-family:var(--font);font-size:11px;font-weight:600;color:var(--tg);text-align:right;margin-top:2px}
 .pass-cache .parts{margin-top:6px}
 @media (max-width:760px){.tbl td.c-c{max-width:124px}.tbl td.c-c .parts{text-align:right}}
+
+/* ───── Ganancias del año y equipo ───── */
+.yr-big{font-family:var(--font-d);font-weight:900;font-size:clamp(46px,9vw,64px);line-height:1;color:var(--money);margin:4px 0 10px}
+.yr-big.team{color:#B18CFF}
+.yr-row{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13.5px;color:var(--text2);margin-bottom:14px}
+.yr-row b{color:var(--text)}
+.yr-bars{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;align-items:end;height:46px;margin-bottom:14px}
+.yr-bars i{display:block;min-height:3px;border-radius:4px;background:linear-gradient(180deg,var(--money),color-mix(in srgb,var(--money) 40%,transparent))}
+.team-card{border-color:color-mix(in srgb,#B18CFF 35%,var(--edge))}
+.parts.team,.parts .pp.team{color:#B18CFF}
+.r3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.team-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.team-h .split-h{margin:0}
+.split.team{border-color:color-mix(in srgb,#B18CFF 40%,var(--edge));background:color-mix(in srgb,#B18CFF 8%,transparent)}
+.split.team .split-h{color:#B18CFF}
+.team-seg button[aria-pressed=true]{background:var(--text);color:var(--stage)}
+.split[hidden],.f[hidden]{display:none}
 
 /* ───── Calendario ───── */
 .cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}

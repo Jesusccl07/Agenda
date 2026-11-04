@@ -66,12 +66,20 @@
         <div class="f"><label for="f_date">Fecha</label><input id="f_date" type="date" required></div>
         <div class="f"><label for="f_cache">Caché (€)</label><input id="f_cache" type="number" min="0" step="any" inputmode="decimal" required placeholder="200"></div>
       </div>
-      <!-- Reparto del caché en los turnos de Two Generation's -->
+      <!-- Turno de un DJ: con o sin equipo -->
+      <div class="split team" id="teamBox">
+        <div class="team-h"><span class="split-h">Equipo</span>
+          <div class="seg sm team-seg" role="group" aria-label="Equipo"><button type="button" data-team="0" aria-pressed="true">Sin equipo</button><button type="button" data-team="1" aria-pressed="false">Con equipo</button></div></div>
+        <div class="f" id="teamField" hidden><label for="f_eq">Cuánto se lleva el equipo (€)</label><input id="f_eq" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+        <p class="split-sum" id="teamSum"></p>
+      </div>
+      <!-- Turno de Two Generation's: reparto del caché en tres partes -->
       <div class="split" id="splitBox" hidden>
-        <p class="split-h">Reparto del caché</p>
-        <div class="r2">
-          <div class="f"><label for="f_pc">Cuánto se lleva CLEMENT (€)</label><input id="f_pc" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
-          <div class="f"><label for="f_pb">Cuánto se lleva DJ BOTA (€)</label><input id="f_pb" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+        <p class="split-h">Cuánto se lleva cada uno</p>
+        <div class="r3">
+          <div class="f"><label for="f_pc">CLEMENT (€)</label><input id="f_pc" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+          <div class="f"><label for="f_pb">DJ BOTA (€)</label><input id="f_pb" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+          <div class="f"><label for="f_pe">Equipo (€)</label><input id="f_pe" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
         </div>
         <p class="split-sum" id="splitSum"></p>
       </div>
