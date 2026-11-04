@@ -277,14 +277,14 @@ async function ensureCalendar() {
 }
 
 /* ───── Quién es quién y avisos: se guardan en la descripción de tu «turnos_dj» ─────
-   Ejemplo: [turnos_dj dj=bota avisos=1]. Así cualquier móvil (y la app de tu socio) sabe de quién es cada calendario. */
+   Ejemplo: [turnos_dj dj=bota avisos=2] (avisos=N: versión de los avisos por defecto ya puestos). Así cualquier móvil (y la app de tu socio) sabe de quién es cada calendario. */
 let meChecked = false, askWho = false, whoShown = false, ownDesc = '';
 const MARK_RE = /\s*\[turnos_dj[^\]]*\]/;
 function readMark(desc) {
   const m = String(desc || '').match(/\[turnos_dj([^\]]*)\]/), t = m ? m[1] : '';
-  return { dj: /dj=clement/i.test(t) ? 'Clement' : /dj=bota/i.test(t) ? 'DJ Bota' : '', avisos: /avisos=1/.test(t) };
+  return { dj: /dj=clement/i.test(t) ? 'Clement' : /dj=bota/i.test(t) ? 'DJ Bota' : '', avisos: +((t.match(/avisos=(\d+)/) || [])[1] || 0) };
 }
-const makeMark = ({ dj, avisos }) => `[turnos_dj${dj ? ' dj=' + (dj === 'Clement' ? 'clement' : 'bota') : ''}${avisos ? ' avisos=1' : ''}]`;
+const makeMark = ({ dj, avisos }) => `[turnos_dj${dj ? ' dj=' + (dj === 'Clement' ? 'clement' : 'bota') : ''}${avisos ? ' avisos=' + avisos : ''}]`;
 async function saveMark(ownId, mark) {
   const base = ownDesc.replace(MARK_RE, '').trim(), desc = (base ? base + '\n' : '') + makeMark(mark);
   if (desc === ownDesc) return;
@@ -295,8 +295,9 @@ async function getCal(id) {
   catch (e) { if (e.auth) throw e; return null; }
 }
 /* Avisos en el móvil: recordatorios por defecto de tu «turnos_dj» (la app de Google Calendar los muestra) */
-const REM_OPTIONS = [[1440, 'El día antes'], [120, '2 horas antes'], [60, '1 hora antes'], [30, '30 minutos antes']];
-const DEFAULT_REMINDERS = [1440, 120];
+const REM_OPTIONS = [[10080, '1 semana antes'], [1440, 'El día antes'], [120, '2 horas antes'], [60, '1 hora antes'], [30, '30 minutos antes']];
+const DEFAULT_REMINDERS = [10080, 1440, 120];
+const AVISOS_V = 2;                                  /* sube si cambian los avisos por defecto */
 const reminders = () => { try { return JSON.parse(store.get(LS.rem, '[]')); } catch (e) { return []; } };
 async function setReminders(calId, mins) {
   await gfetch(`${CAL_API}/users/me/calendarList/${encodeURIComponent(calId)}`,
@@ -312,9 +313,10 @@ async function identify(own) {
     let dj = mark.dj;
     if (!dj) { const g = store.get(LS.me) || OTHER[store.get(LS.partnerDJ)]; if (PANELS.includes(g)) dj = g; }   /* si tu socio ya eligió, tú eres el otro */
     let avisos = mark.avisos;
-    if (!avisos) {          /* la primera vez: «el día antes» y «2 horas antes» (sin quitar los avisos que ya tuvieras) */
-      await setReminders(own.id, [...new Set([...(own.reminders || []), ...DEFAULT_REMINDERS])].sort((a, b) => b - a).slice(0, 5));
-      avisos = true;
+    if (avisos < AVISOS_V) {  /* avisos por defecto (1 semana, 1 día y 2 horas antes), sin quitar los que ya tuvieras */
+      const add = avisos ? [10080, 1440] : DEFAULT_REMINDERS;  /* si ya tenía los de antes, se añaden la semana y el día antes */
+      await setReminders(own.id, [...new Set([...(own.reminders || []), ...add])].sort((a, b) => b - a).slice(0, 5));
+      avisos = AVISOS_V;
     }
     if (dj !== mark.dj || avisos !== mark.avisos) await saveMark(own.id, { dj, avisos });
     meChecked = true;

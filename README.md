@@ -31,7 +31,7 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - El reparto se guarda en el evento de Google Calendar (`💸 Parte CLEMENT: … / 💸 Parte DJ BOTA: …`), así que sale igual en los dos calendarios y en las dos apps.
 
 ## Avisos en el móvil
-- Cada turno avisa **el día antes y 2 horas antes** (se puede cambiar en *Ajustes → Avisos en el móvil*: también 1 hora o 30 minutos antes).
+- Cada turno avisa **1 semana antes, el día antes y 2 horas antes** (se puede cambiar en *Ajustes → Avisos en el móvil*: también 1 hora o 30 minutos antes).
 - Los avisos los muestra la **app de Google Calendar** del móvil: tenla instalada, con tu cuenta y las notificaciones activadas. Valen para los turnos de tu calendario: los tuyos y los de Two Generation's.
 
 ### Autorizar otra cuenta (por ejemplo, la de tu padre)
