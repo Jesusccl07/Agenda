@@ -157,13 +157,19 @@ function initTokenClient() {
   });
 }
 /* Se llama SIN await previo para conservar el gesto del usuario (evita que bloqueen la ventana) */
-function getToken(interactive) {
-  if (token && Date.now() < tokenExp - 60000) return Promise.resolve(token);
+/* chooseAccount: muestra siempre el selector de cuentas de Google (para usar otra cuenta, p. ej. la de tu padre).
+   Al reconectar se pide la MISMA cuenta que ya estaba (login_hint), así no se cuela otra sesión de Google del móvil. */
+function getToken(interactive, chooseAccount = false) {
+  if (!chooseAccount && token && Date.now() < tokenExp - 60000) return Promise.resolve(token);
   if (!interactive) return Promise.resolve(null);
   initTokenClient();
   if (!tokenClient) { toast('Google aún se está cargando, inténtalo de nuevo'); return Promise.resolve(null); }
-  return new Promise(res => { pendingToken = res; tokenClient.requestAccessToken(isConnected() ? { prompt: '' } : {}); });
+  const email = currentUser()?.email, opts = {};
+  if (chooseAccount || !isConnected()) opts.prompt = 'select_account';
+  else { opts.prompt = ''; if (email) opts.login_hint = email; }
+  return new Promise(res => { pendingToken = res; tokenClient.requestAccessToken(opts); });
 }
+const currentUser = () => { try { return JSON.parse(store.get(LS.user, 'null')); } catch (e) { return null; } };
 async function gfetch(url, opts = {}) {
   const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + token } });
   if (r.status === 401) { token = null; store.del(LS.tok); const e = new Error('auth'); e.auth = true; throw e; }
@@ -237,7 +243,7 @@ function mergeRemote(remote) {
   return out;
 }
 async function loadUser() {
-  try { const j = await (await gfetch('https://www.googleapis.com/oauth2/v3/userinfo')).json(); store.set(LS.user, JSON.stringify({ name: j.name, email: j.email })); } catch (e) {}
+  try { const j = await (await gfetch('https://www.googleapis.com/oauth2/v3/userinfo')).json(); store.set(LS.user, JSON.stringify({ name: j.name, email: j.email })); return j; } catch (e) { return null; }
 }
 async function sync(interactive = false) {
   if (!isConnected()) { setSync('local'); return; }
@@ -260,7 +266,7 @@ async function sync(interactive = false) {
     saveLocal();
     if (e.nocal) { setSync('nocal'); openPickCal(e.list); }
     else if (e.auth) setSync('reauth');
-    else { setSync(navigator.onLine ? 'error' : 'offline'); if (e.status === 403) toast('Google ha rechazado el acceso: vuelve a iniciar sesión y acepta los permisos'); }
+    else { setSync(navigator.onLine ? 'error' : 'offline'); if (e.status === 403) toast('Google ha rechazado el acceso: comprueba que el calendario Nexora está compartido con esta cuenta con permiso para hacer cambios'); }
     console.warn('sync', e);
   } finally { syncing = false; if (again) { again = false; setTimeout(() => sync(false), 400); } }
 }
@@ -270,10 +276,25 @@ function markDirty() {
   setSync(navigator.onLine ? 'pending' : 'offline');
   clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(false), 900);
 }
+const LOGIN_FAIL = 'No se pudo iniciar sesión con Google. Si es otra cuenta, tiene que estar autorizada en la app (usuarios de prueba de Google Cloud).';
 async function connectGoogle() {
   const tok = await getToken(true);                         /* primera instrucción: conserva el gesto del toque */
-  if (!tok) { toast('No se pudo iniciar sesión con Google'); return; }
-  store.set(LS.conn, '1'); await loadUser(); await sync(false); renderSelFoot(); if (owner) render();
+  if (!tok) { toast(LOGIN_FAIL); return; }
+  store.set(LS.conn, '1'); const u = await loadUser(); await sync(false); renderSelFoot(); if (owner) render();
+  if (u?.email) toast('Conectado como ' + u.email);
+}
+/* Cambiar de cuenta de Google sin perder lo que aún no se ha enviado */
+async function switchAccount() {
+  const prevEmail = currentUser()?.email, pend = items.filter(i => i.pending).length;
+  const tok = await getToken(true, true);                   /* primera instrucción: conserva el gesto del toque */
+  if (!tok) { toast(LOGIN_FAIL); return; }
+  const u = await loadUser();
+  if (u?.email && u.email === prevEmail) { closeSheet(); toast('Sigues conectado como ' + u.email); return; }
+  /* Otra cuenta: se vuelve a buscar el calendario y se recargan los turnos desde ella */
+  [LS.cal, LS.calname, LS.last].forEach(k => store.del(k));
+  items = items.filter(i => i.pending); saveLocal();
+  store.set(LS.conn, '1'); closeSheet(); await sync(false); renderSelFoot(); if (owner) render();
+  toast((u?.email ? 'Conectado como ' + u.email : 'Cuenta cambiada') + (pend ? `. Se han enviado ${plural(pend, 'cambio pendiente', 'cambios pendientes')}` : ''));
 }
 function disconnectGoogle() {
   if (!confirm('¿Cerrar sesión de Google? Se borrará la copia de turnos de este móvil (en tu Google Calendar siguen igual).')) return;
@@ -556,7 +577,7 @@ function render() {
 function renderSelFoot() {
   const u = (() => { try { return JSON.parse(store.get(LS.user, 'null')); } catch (e) { return null; } })();
   $('#selFoot').innerHTML = isConnected()
-    ? `${syncPill()}<span class="mail">${u?.email ? esc(u.email) : 'Conectado a Google Calendar'}</span>`
+    ? `${syncPill()}<span class="mail">${u?.email ? esc(u.email) : 'Conectado a Google Calendar'}</span><button class="btn small" data-act="account">Cambiar de cuenta</button>`
     : `<button class="btn primary" data-act="connect">Iniciar sesión con Google</button><span class="mail">Para ver y editar los turnos de Nexora</span>`;
   setSync(syncState);
 }
@@ -634,13 +655,13 @@ function openSettings() {
     <div class="kv"><span>Calendario</span><span>${esc(store.get(LS.calname) || CALENDAR_NAME)}</span></div>
     <div class="kv"><span>Última sincronización</span><span>${last ? new Intl.DateTimeFormat('es-ES', { timeZone: TZ, dateStyle: 'short', timeStyle: 'short' }).format(last) : '—'}</span></div>
     <p class="note">Se actualiza solo cada minuto con la app abierta y al volver a ella. Si no tienes internet puedes seguir añadiendo y editando turnos: se enviarán al reconectar. Cada hora Google pide reconectar: toca el indicador de estado.</p>
-    <div class="mact" style="flex-wrap:wrap">${isConnected() ? `<button class="btn primary" data-act="syncnow">Sincronizar ahora</button><button class="btn" data-act="pickcal">Cambiar calendario</button><button class="btn danger" data-act="logout">Cerrar sesión</button>` : `<button class="btn primary" data-act="connect">Iniciar sesión con Google</button>`}<button class="btn" data-act="closeSheet">Cerrar</button></div>`);
+    <div class="mact" style="flex-wrap:wrap">${isConnected() ? `<button class="btn primary" data-act="syncnow">Sincronizar ahora</button><button class="btn" data-act="account">Cambiar de cuenta</button><button class="btn" data-act="pickcal">Cambiar calendario</button><button class="btn danger" data-act="logout">Cerrar sesión</button>` : `<button class="btn primary" data-act="connect">Iniciar sesión con Google</button>`}<button class="btn" data-act="closeSheet">Cerrar</button></div>`);
 }
 async function openPickCal(list) {
   if (!list) { if (!(await getToken(false))) { toast('Toca el indicador de estado para reconectar'); return; } try { list = await listCalendars(); } catch (e) { toast('No se pudo leer tu lista de calendarios'); return; } }
-  openSheet(`<h3>Elige el calendario de turnos</h3><p class="ms">${list.length ? `No he encontrado uno llamado «${esc(CALENDAR_NAME)}». Elige dónde están tus turnos:` : 'No tienes calendarios en los que se pueda escribir.'}</p>
+  openSheet(`<h3>Elige el calendario de turnos</h3><p class="ms">${list.length ? `No he encontrado uno llamado «${esc(CALENDAR_NAME)}» en ${esc(currentUser()?.email || 'esta cuenta')}. Elige dónde están tus turnos:` : `${esc(currentUser()?.email || 'Esta cuenta')} no tiene calendarios en los que se pueda escribir.`} Si «${esc(CALENDAR_NAME)}» es de otra cuenta, compártelo con esta con el permiso «Hacer cambios en eventos».</p>
     <div class="list-pick">${list.map(c => `<button class="btn" data-act="choosecal" data-id="${esc(c.id)}" data-name="${esc(c.name)}">${esc(c.name)}${c.primary ? ' (principal)' : ''}</button>`).join('')}</div>
-    <div class="mact"><button class="btn" data-act="closeSheet">Cancelar</button></div>`);
+    <div class="mact"><button class="btn" data-act="account">Usar otra cuenta</button><button class="btn" data-act="closeSheet">Cancelar</button></div>`);
 }
 
 /* ───────────── eventos de la interfaz ───────────── */
@@ -663,6 +684,7 @@ document.addEventListener('click', e => {
     case 'settings': openSettings(); break;
     case 'closeSheet': closeSheet(); break;
     case 'logout': disconnectGoogle(); break;
+    case 'account': switchAccount(); break;
     case 'pickcal': openPickCal(); break;
     case 'choosecal': store.set(LS.cal, id); store.set(LS.calname, t.dataset.name); closeSheet(); toast('Calendario elegido'); sync(true); break;
     case 'add': openForm(null, d); break;

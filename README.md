@@ -14,6 +14,13 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - Se actualiza sola cada minuto con la app abierta.
 - Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
 
+## Usarla con otra cuenta de Google (por ejemplo, la de tu padre)
+Cada móvil inicia sesión con su propia cuenta y desde *Ajustes → Cambiar de cuenta* se puede pasar a otra. Para que otra cuenta funcione:
+
+1. **Comparte el calendario Nexora** con esa cuenta: Google Calendar (en el ordenador) → Nexora → *Configuración y uso compartido* → *Compartir con determinadas personas* → añade su correo con el permiso **«Hacer cambios en eventos»**. Esa persona tiene que aceptar la invitación del correo.
+2. **Autoriza la cuenta en la app de Google**: si en Google Cloud Console la pantalla de consentimiento está en modo *Prueba* (Testing), añade su correo en *Google Auth Platform → Público (Audience) → Usuarios de prueba*. Si no, Google le mostrará «Acceso bloqueado».
+3. En su móvil abre el enlace, elige agenda, pulsa *Iniciar sesión con Google* y elige su cuenta. Si Google avisa de que la app no está verificada: *Configuración avanzada → Ir a…*.
+
 Permisos que pide al iniciar sesión con Google: ver y editar eventos de calendario, ver la lista de calendarios y tu nombre/correo.
 
 ## Instalarla como app
