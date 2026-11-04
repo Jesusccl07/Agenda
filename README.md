@@ -2,9 +2,9 @@
 
 App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**, leyendo y escribiendo en el calendario «Nexora» de Google Calendar. Funciona sin conexión.
 
-Ábrela en: https://jesusccl07.github.io/agenda/turnos/
+Ábrela en: https://jesusccl07.github.io/Agenda/turnos/
 
-(La dirección https://jesusccl07.github.io/agenda/ también lleva directamente a Turnos DJ.)
+(La dirección https://jesusccl07.github.io/Agenda/ también lleva directamente a Turnos DJ.)
 
 - Al abrir eliges agenda (CLEMENT o DJ Bota). Los turnos marcados como *Two Generation's* salen en las dos.
 - Panel de administración con estilo *Liquid Glass*: paneles de cristal sobre luces de sala animadas (cian y violeta para CLEMENT, naranja y magenta para DJ Bota).
