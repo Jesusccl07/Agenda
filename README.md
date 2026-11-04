@@ -14,17 +14,24 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - Se actualiza sola cada minuto con la app abierta.
 - Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
 
-## Calendarios: cada uno el suyo, Two Generation's en los dos
-- Cada cuenta de Google tiene su **propio calendario «turnos_dj»**. Al iniciar sesión la app lo busca; si no existe, renombra el antiguo «Nexora» de esa cuenta o crea uno nuevo.
-- Los turnos de CLEMENT o de DJ Bota se quedan solo en el calendario de quien los apunta.
-- Los turnos de **Two Generation's se copian en los dos calendarios**: añadirlos, modificarlos o borrarlos desde cualquiera de los dos se refleja en el otro (también si se cambian directamente en Google Calendar).
-- Para que la copia funcione, **cada uno comparte su «turnos_dj» con el otro**: Google Calendar (en el ordenador) → turnos_dj → *Configuración y uso compartido* → *Compartir con determinadas personas* → añade el correo del otro con el permiso **«Hacer cambios en eventos»** (el otro tiene que aceptar la invitación).
-- En *Ajustes* se ve tu calendario y si el del socio está compartido. Desde ahí también puedes *Cambiar de cuenta*.
+## Calendarios: cada uno el suyo, y los dos ven los turnos de los dos
+- Cada cuenta de Google tiene su **propio calendario «turnos_dj»**. Al iniciar sesión la app lo busca; si no existe, renombra el antiguo «Nexora» de esa cuenta o **crea uno nuevo** (lo verás en Google Calendar).
+- La primera vez la app pregunta **«¿De quién es esta cuenta?»** (CLEMENT o DJ BOTA). Si tu socio ya lo eligió, se deduce sola. Se puede cambiar en *Ajustes*.
+- **Cada turno se guarda en el calendario de su DJ**: los de CLEMENT en el de CLEMENT y los de DJ BOTA en el de DJ BOTA, los apunte quien los apunte. Los de **Two Generation's se copian en los dos** (añadirlos, cambiarlos o borrarlos en uno se refleja en el otro, también desde Google Calendar).
+- **Los dos veis los turnos de los dos**: en el panel de tu socio salen los turnos de su calendario en cuanto él inicie sesión en la app y te lo comparta. Si solo te deja verlo, sus turnos salen como «Solo ver».
+- **Compartir desde la app**: *Ajustes → Compartir con tu socio* → escribe su correo → *Compartir*. A tu socio le llega un correo de Google en el que tiene que pulsar «Añadir este calendario». Cada uno lo hace con el otro.
+- Si en tu calendario quedaron turnos de tu socio (de cuando había un solo calendario), *Ajustes* ofrece **pasarlos al suyo**.
+
+## Avisos en el móvil
+- Cada turno avisa **el día antes y 2 horas antes** (se puede cambiar en *Ajustes → Avisos en el móvil*: también 1 hora o 30 minutos antes).
+- Los avisos los muestra la **app de Google Calendar** del móvil: tenla instalada, con tu cuenta y las notificaciones activadas. Valen para los turnos de tu calendario: los tuyos y los de Two Generation's.
 
 ### Autorizar otra cuenta (por ejemplo, la de tu padre)
 Si en Google Cloud Console la pantalla de consentimiento está en modo *Prueba* (Testing), añade su correo en *Google Auth Platform → Público (Audience) → Usuarios de prueba*. Si no, Google le mostrará «Acceso bloqueado». Si Google avisa de que la app no está verificada: *Configuración avanzada → Ir a…*.
 
-Permisos que pide al iniciar sesión con Google: gestionar tus calendarios (para crear y renombrar «turnos_dj» y copiar los turnos de Two Generation's en el del socio) y ver tu nombre/correo.
+Permisos que pide al iniciar sesión con Google: gestionar tus calendarios (para crear y renombrar «turnos_dj», compartirlo con tu socio, poner los avisos y guardar los turnos en el calendario de cada uno) y ver tu nombre/correo.
 
 ## Instalarla como app
 Abre el enlace en Safari (iPhone) o Chrome (Android) → *Añadir a pantalla de inicio*.
+
+Para ver el **icono nuevo** en el iPhone hay que borrar el acceso de la pantalla de inicio y volver a añadirlo (en Android se actualiza solo con el tiempo).

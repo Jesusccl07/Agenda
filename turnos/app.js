@@ -3,7 +3,10 @@
    Turnos DJ — PWA de turnos sincronizada con Google Calendar
    · Cada cuenta de Google tiene su propio calendario «turnos_dj» (la app lo crea si no existe;
      si encuentra el antiguo «Nexora» de esa cuenta, lo renombra a «turnos_dj»).
-   · Los turnos de Two Generation's se copian en el «turnos_dj» del socio, si te lo ha compartido.
+   · Cada cuenta dice una vez de quién es (CLEMENT o DJ BOTA). Se ven los turnos de los dos: los tuyos de tu
+     calendario y los de tu socio del suyo (si te lo ha compartido). Cada turno se guarda en el calendario de su DJ.
+   · Los turnos de Two Generation's se copian en los dos calendarios.
+   · Avisos en el móvil: recordatorios de Google Calendar en tu «turnos_dj» (la app de Google Calendar los muestra).
    · Inicio de sesión con Google (Client ID propio de la web en jesusccl07.github.io).
    · Google Calendar es la fuente de verdad; en el móvil se guarda una copia para
      verla sin conexión y los cambios hechos offline se envían al volver internet.
@@ -43,7 +46,11 @@ const store = {
 };
 const LS = { data: 'turnos.data.v1', conn: 'turnos.gcal.connected', tok: 'turnos.gcal.token', cal: 'turnos.gcal.calendarId',
   calname: 'turnos.gcal.calendarName', last: 'turnos.gcal.lastSync', user: 'turnos.gcal.user',
-  partner: 'turnos.gcal.partnerId', tomb: 'turnos.gcal.tgDeleted', scopev: 'turnos.gcal.scopeVersion' };
+  partner: 'turnos.gcal.partnerId', tomb: 'turnos.gcal.tgDeleted', scopev: 'turnos.gcal.scopeVersion',
+  me: 'turnos.gcal.me', partnerDJ: 'turnos.gcal.partnerDJ', partnerW: 'turnos.gcal.partnerWritable',
+  rem: 'turnos.gcal.reminders', pmail: 'turnos.gcal.partnerEmail' };
+/* Lo que es de cada cuenta: se borra al cambiar de cuenta o cerrar sesión */
+const ACCOUNT_KEYS = ['cal', 'calname', 'last', 'partner', 'tomb', 'me', 'partnerDJ', 'partnerW', 'rem', 'pmail'];
 
 /* Fechas: todo se calcula en hora de Madrid, vengas de donde vengas */
 const tzFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -140,8 +147,19 @@ const saveLocal = () => store.set(LS.data, JSON.stringify({ version: 1, items })
 const byStart = (a, b) => a.startMs - b.startMs;
 const KNOWN = ['Clement', 'DJ Bota', TWO_GEN];
 let owner = null;
-/* Un turno sale en el panel de su DJ; los de Two Generation's salen en los dos; sin DJ, en los dos (con aviso) */
-const inPanel = i => i.pending !== 'delete' && (!i.dj || !KNOWN.includes(i.dj) || i.dj === TWO_GEN || i.dj === owner);
+/* ¿De quién es esta cuenta? (CLEMENT o DJ BOTA) y, por tanto, de quién es el calendario del socio */
+const OTHER = { 'Clement': 'DJ Bota', 'DJ Bota': 'Clement' };
+const myDJ = () => PANELS.includes(store.get(LS.me)) ? store.get(LS.me) : '';
+const partnerDJ = () => myDJ() ? OTHER[myDJ()] : (PANELS.includes(store.get(LS.partnerDJ)) ? store.get(LS.partnerDJ) : '');
+/* Los turnos del calendario del socio llevan el prefijo «p:» en su id local */
+const PFX = 'p:';
+const rawId = it => String(it.id).startsWith(PFX) ? String(it.id).slice(PFX.length) : String(it.id);
+const partnerWritable = () => partnerCal ? partnerCal.writer : store.get(LS.partnerW) === '1';
+const canEdit = i => i.cal !== 'p' || partnerWritable();
+/* DJ de un turno; si no lo pone, es del dueño del calendario donde está */
+const effDJ = i => KNOWN.includes(i.dj) ? i.dj : (i.cal === 'p' ? partnerDJ() : myDJ());
+/* Un turno sale en el panel de su DJ; los de Two Generation's salen en los dos; sin DJ conocido, en los dos (con aviso) */
+const inPanel = i => { if (i.pending === 'delete') return false; const d = effDJ(i); return !d || d === TWO_GEN || d === owner; };
 const panelItems = () => items.filter(inPanel);
 
 /* ───────────── Google Calendar ───────────── */
@@ -191,9 +209,10 @@ const normName = s => String(s || '').trim().toLowerCase();
 async function listCalendars() {
   const out = []; let pt = '';
   do {
-    const j = await (await gfetch(`${CAL_API}/users/me/calendarList?minAccessRole=writer&maxResults=250${pt ? '&pageToken=' + encodeURIComponent(pt) : ''}`)).json();
+    const j = await (await gfetch(`${CAL_API}/users/me/calendarList?minAccessRole=reader&maxResults=250${pt ? '&pageToken=' + encodeURIComponent(pt) : ''}`)).json();
     out.push(...(j.items || []).map(c => ({ id: c.id, name: c.summaryOverride || c.summary || c.id, summary: c.summary || '', override: c.summaryOverride || '',
-      primary: !!c.primary, owner: c.accessRole === 'owner' }))); pt = j.nextPageToken || '';
+      primary: !!c.primary, owner: c.accessRole === 'owner', writer: c.accessRole === 'owner' || c.accessRole === 'writer',
+      reminders: (c.defaultReminders || []).filter(r => r.method === 'popup').map(r => r.minutes) }))); pt = j.nextPageToken || '';
   } while (pt);
   return out;
 }
@@ -202,7 +221,7 @@ const isNamed = (c, n) => normName(c.name) === normName(n) || normName(c.summary
    Además busca el «turnos_dj» que te haya compartido tu socio, para copiar ahí los turnos de Two Generation's. */
 let partnerCal = null;
 async function ensureCalendar() {
-  const cals = await listCalendars(), cached = store.get(LS.cal);
+  const cals = (await listCalendars()).filter(c => c.writer || isNamed(c, CALENDAR_NAME)), cached = store.get(LS.cal);
   let own = cals.find(c => c.id === cached && c.owner) || cals.find(c => c.owner && isNamed(c, CALENDAR_NAME));
   if (!own) {
     const old = cals.find(c => c.owner && LEGACY_NAMES.some(n => isNamed(c, n)));
@@ -212,15 +231,62 @@ async function ensureCalendar() {
       own = { ...old, name: CALENDAR_NAME }; toast(`Tu calendario «${old.name}» ahora se llama «${CALENDAR_NAME}»`);
     } else {
       const c = await (await gfetch(`${CAL_API}/calendars`, jsonOpts('POST', { summary: CALENDAR_NAME, timeZone: TZ, description: 'Turnos DJ: creado por la app de turnos' }))).json();
-      own = { id: c.id, name: CALENDAR_NAME, owner: true }; toast(`Creado tu calendario «${CALENDAR_NAME}» en Google Calendar`);
+      own = { id: c.id, name: CALENDAR_NAME, owner: true, writer: true, reminders: [] }; toast(`Creado tu calendario «${CALENDAR_NAME}» en Google Calendar`);
     }
   }
   if (own.id !== cached) store.set(LS.cal, own.id);
-  store.set(LS.calname, own.name);
-  partnerCal = cals.find(c => c.id !== own.id && !c.owner && isNamed(c, CALENDAR_NAME))
-    || cals.find(c => c.id !== own.id && c.id === store.get(LS.partner)) || null;
-  if (partnerCal) store.set(LS.partner, partnerCal.id); else store.del(LS.partner);
-  return own.id;
+  store.set(LS.calname, own.name); store.set(LS.rem, JSON.stringify(own.reminders || []));
+  const cands = cals.filter(c => c.id !== own.id && !c.owner && isNamed(c, CALENDAR_NAME));
+  partnerCal = cands.find(c => c.writer) || cands[0] || cals.find(c => c.id !== own.id && c.id === store.get(LS.partner)) || null;
+  if (partnerCal) { store.set(LS.partner, partnerCal.id); store.set(LS.partnerW, partnerCal.writer ? '1' : '0'); }
+  else { store.del(LS.partner); store.del(LS.partnerW); }
+  return own;
+}
+
+/* ───── Quién es quién y avisos: se guardan en la descripción de tu «turnos_dj» ─────
+   Ejemplo: [turnos_dj dj=bota avisos=1]. Así cualquier móvil (y la app de tu socio) sabe de quién es cada calendario. */
+let meChecked = false, askWho = false, whoShown = false, ownDesc = '';
+const MARK_RE = /\s*\[turnos_dj[^\]]*\]/;
+function readMark(desc) {
+  const m = String(desc || '').match(/\[turnos_dj([^\]]*)\]/), t = m ? m[1] : '';
+  return { dj: /dj=clement/i.test(t) ? 'Clement' : /dj=bota/i.test(t) ? 'DJ Bota' : '', avisos: /avisos=1/.test(t) };
+}
+const makeMark = ({ dj, avisos }) => `[turnos_dj${dj ? ' dj=' + (dj === 'Clement' ? 'clement' : 'bota') : ''}${avisos ? ' avisos=1' : ''}]`;
+async function saveMark(ownId, mark) {
+  const base = ownDesc.replace(MARK_RE, '').trim(), desc = (base ? base + '\n' : '') + makeMark(mark);
+  if (desc === ownDesc) return;
+  await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}`, jsonOpts('PATCH', { description: desc })); ownDesc = desc;
+}
+async function getCal(id) {
+  try { return await (await gfetch(`${CAL_API}/calendars/${encodeURIComponent(id)}`)).json(); }
+  catch (e) { if (e.auth) throw e; return null; }
+}
+/* Avisos en el móvil: recordatorios por defecto de tu «turnos_dj» (la app de Google Calendar los muestra) */
+const REM_OPTIONS = [[1440, 'El día antes'], [120, '2 horas antes'], [60, '1 hora antes'], [30, '30 minutos antes']];
+const DEFAULT_REMINDERS = [1440, 120];
+const reminders = () => { try { return JSON.parse(store.get(LS.rem, '[]')); } catch (e) { return []; } };
+async function setReminders(calId, mins) {
+  await gfetch(`${CAL_API}/users/me/calendarList/${encodeURIComponent(calId)}`,
+    jsonOpts('PATCH', { defaultReminders: mins.map(m => ({ method: 'popup', minutes: m })), selected: true }));
+  store.set(LS.rem, JSON.stringify(mins));
+}
+async function identify(own) {
+  if (meChecked) return;
+  try {
+    const c = await getCal(own.id); if (!c) return;
+    ownDesc = c.description || ''; const mark = readMark(ownDesc);
+    if (partnerCal) { const pm = readMark((await getCal(partnerCal.id))?.description).dj; if (pm) store.set(LS.partnerDJ, pm); else store.del(LS.partnerDJ); }
+    let dj = mark.dj;
+    if (!dj) { const g = store.get(LS.me) || OTHER[store.get(LS.partnerDJ)]; if (PANELS.includes(g)) dj = g; }   /* si tu socio ya eligió, tú eres el otro */
+    let avisos = mark.avisos;
+    if (!avisos) {          /* la primera vez: «el día antes» y «2 horas antes» (sin quitar los avisos que ya tuvieras) */
+      await setReminders(own.id, [...new Set([...(own.reminders || []), ...DEFAULT_REMINDERS])].sort((a, b) => b - a).slice(0, 5));
+      avisos = true;
+    }
+    if (dj !== mark.dj || avisos !== mark.avisos) await saveMark(own.id, { dj, avisos });
+    meChecked = true;
+    if (dj) { store.set(LS.me, dj); askWho = false; } else { store.del(LS.me); askWho = true; }
+  } catch (e) { if (e.auth) throw e; console.warn('identificar', e); }
 }
 async function listRaw(calId, extra = {}) {
   const out = []; let pt = '';
@@ -246,58 +312,79 @@ const sameContent = (a, b) => (a.summary || '') === (b.summary || '') && (a.loca
   && stripHtml(a.description).trim() === stripHtml(b.description).trim() && evTime(a.start) === evTime(b.start) && evTime(a.end) === evTime(b.end);
 const copyBody = (e, k) => ({ summary: e.summary || '', location: e.location || '', description: e.description || '', start: e.start, end: e.end,
   extendedProperties: { shared: { tg: k, kind: 'tg' } } });
-async function reconcileTG(ownId, ownEvents) {
-  if (!partnerCal) return false;
+async function reconcileTG(ownId, ownEvents, pEvents) {
+  const ch = { own: false, partner: false };
+  if (!partnerCal?.writer) return ch;
   const pPath = id => `${CAL_API}/calendars/${encodeURIComponent(partnerCal.id)}/events${id ? '/' + encodeURIComponent(id) : ''}`;
   const oPath = id => `${CAL_API}/calendars/${encodeURIComponent(ownId)}/events${id ? '/' + encodeURIComponent(id) : ''}`;
-  let pEv;
-  try { pEv = await listRaw(partnerCal.id, { sharedExtendedProperty: 'kind=tg' }); }
-  catch (e) { if (e.auth) throw e; console.warn('socio', e); return false; }
-  let changed = false;
-  const ownBy = new Map(), dead = new Set(tombs());
-  for (const e of ownEvents) {
-    let k = tgKey(e);
-    if (!k && isTGEvent(e)) {                           /* turnos de Two Generation's antiguos, sin marca */
-      k = 'tg' + uid(); await gfetch(oPath(e.id), jsonOpts('PATCH', { extendedProperties: { shared: { tg: k, kind: 'tg' } } }));
-      e.extendedProperties = { shared: { tg: k, kind: 'tg' } };
+  /* Turnos de Two Generation's antiguos, sin marca (en cualquiera de los dos calendarios): se les pone */
+  const mark = async (list, path, side) => {
+    const by = new Map();
+    for (const e of list) {
+      let k = tgKey(e);
+      if (!k && isTGEvent(e)) {
+        k = 'tg' + uid(); await gfetch(path(e.id), jsonOpts('PATCH', { extendedProperties: { shared: { tg: k, kind: 'tg' } } }));
+        e.extendedProperties = { shared: { tg: k, kind: 'tg' } }; ch[side] = true;
+      }
+      if (k) by.set(k, e);
     }
-    if (k) ownBy.set(k, e);
-  }
-  const pBy = new Map(pEv.filter(tgKey).map(e => [tgKey(e), e]));
+    return by;
+  };
+  const ownBy = await mark(ownEvents, oPath, 'own'), pBy = await mark(pEvents, pPath, 'partner'), dead = new Set(tombs());
+  const newer = (a, b) => Date.parse(a.updated) > Date.parse(b.updated);
   for (const [k, e] of ownBy) {
-    const p = pBy.get(k), tg = isTGEvent(e);
-    if (tg && !p) await gfetch(pPath(), jsonOpts('POST', copyBody(e, k)));
-    else if (!tg && p) await gfetch(pPath(p.id), { method: 'DELETE' }).catch(() => {});
-    else if (tg && p && !sameContent(e, p)) {
-      if (Date.parse(p.updated) > Date.parse(e.updated)) { await gfetch(oPath(e.id), jsonOpts('PATCH', copyBody(p, k))); changed = true; }
-      else await gfetch(pPath(p.id), jsonOpts('PATCH', copyBody(e, k)));
+    const p = pBy.get(k), tg = isTGEvent(e), ptg = p && isTGEvent(p);
+    if (tg && !p) { await gfetch(pPath(), jsonOpts('POST', copyBody(e, k))); ch.partner = true; }
+    else if (tg && ptg && !sameContent(e, p)) {                     /* editado en uno de los dos: gana el cambio más reciente */
+      if (newer(p, e)) { await gfetch(oPath(e.id), jsonOpts('PATCH', copyBody(p, k))); ch.own = true; }
+      else { await gfetch(pPath(p.id), jsonOpts('PATCH', copyBody(e, k))); ch.partner = true; }
     }
+    else if (tg && p && !ptg) {                                     /* tu socio lo dejó solo para él */
+      if (newer(p, e)) { await gfetch(oPath(e.id), { method: 'DELETE' }).catch(() => {}); ch.own = true; }
+      else { await gfetch(pPath(p.id), jsonOpts('PATCH', copyBody(e, k))); ch.partner = true; }
+    }
+    else if (!tg && ptg) { await gfetch(pPath(p.id), { method: 'DELETE' }).catch(() => {}); ch.partner = true; }   /* tú lo dejaste solo para ti */
   }
   for (const [k, p] of pBy) {
-    if (ownBy.has(k)) continue;
-    if (dead.has(k)) await gfetch(pPath(p.id), { method: 'DELETE' }).catch(() => {});   /* lo borraste tú */
-    else { await gfetch(oPath(), jsonOpts('POST', copyBody(p, k))); changed = true; }      /* lo añadió tu socio */
+    if (ownBy.has(k) || !isTGEvent(p)) continue;
+    if (dead.has(k)) { await gfetch(pPath(p.id), { method: 'DELETE' }).catch(() => {}); ch.partner = true; }   /* lo borraste tú */
+    else { await gfetch(oPath(), jsonOpts('POST', copyBody(p, k))); ch.own = true; }                            /* lo añadió tu socio */
   }
-  return changed;
+  return ch;
 }
+/* A qué calendario va cada turno: al de tu socio si es suyo (y te deja escribir); el resto, incluido Two Generation's, al tuyo */
+const targetOf = it => (it.dj && it.dj === partnerDJ() && partnerWritable()) ? 'p' : 'o';
 /* Envía a Google lo que hiciste sin conexión (o antes de que terminara de sincronizar) */
-async function flush(calId) {
-  const evPath = id => `${CAL_API}/calendars/${encodeURIComponent(calId)}/events${id ? '/' + encodeURIComponent(id) : ''}`;
+async function flush(ownId) {
+  const path = (cal, id) => `${CAL_API}/calendars/${encodeURIComponent(cal)}/events${id ? '/' + encodeURIComponent(id) : ''}`;
+  const calOf = w => w === 'p' ? (partnerCal?.writer ? partnerCal.id : null) : ownId;
+  const gone = e => !e.auth && (e.status === 404 || e.status === 410);
   for (const snap of items.filter(i => i.pending)) {
     const it = items.find(x => x.id === snap.id); if (!it || !it.pending) continue;
-    const rev = it.rev || 0, op = it.pending;
+    const rev = it.rev || 0, op = it.pending, cur = it.cal === 'p' ? 'p' : 'o', fresh = op === 'create' || String(it.id).startsWith('tmp_');
     if (op === 'delete') {
-      addTomb(it.tg);
-      if (!String(it.id).startsWith('tmp_')) { try { await gfetch(evPath(it.id), { method: 'DELETE' }); } catch (e) { if (e.auth || (e.status !== 404 && e.status !== 410)) throw e; } }
+      if (!fresh) {
+        const src = calOf(cur); if (!src) continue;              /* el calendario del socio no está disponible: se queda pendiente */
+        addTomb(it.tg);
+        try { await gfetch(path(src, rawId(it)), { method: 'DELETE' }); } catch (e) { if (!gone(e)) throw e; }
+      }
       items = items.filter(x => x.id !== it.id);
     } else {
-      let newId = it.id;
-      if (op === 'create' || String(it.id).startsWith('tmp_')) newId = (await (await gfetch(evPath(), jsonOpts('POST', bodyOf(it)))).json()).id;
-      else {
-        try { await gfetch(evPath(it.id), jsonOpts('PATCH', bodyOf(it))); }
-        catch (e) { if (e.auth || (e.status !== 404 && e.status !== 410)) throw e; newId = (await (await gfetch(evPath(), jsonOpts('POST', bodyOf(it)))).json()).id; }
+      const want = targetOf(it), dst = calOf(want); if (!dst) continue;
+      let newId;
+      if (fresh) newId = (await (await gfetch(path(dst), jsonOpts('POST', bodyOf(it)))).json()).id;
+      else if (want !== cur) {                                      /* cambia de dueño: se pasa al otro calendario */
+        const src = calOf(cur); if (!src) continue;
+        if (it.tg && it.dj !== TWO_GEN) { addTomb(it.tg); it.tg = ''; }
+        newId = (await (await gfetch(path(dst), jsonOpts('POST', bodyOf(it)))).json()).id;
+        try { await gfetch(path(src, rawId(it)), { method: 'DELETE' }); } catch (e) { if (!gone(e)) throw e; }
+      } else {
+        newId = rawId(it);
+        try { await gfetch(path(dst, newId), jsonOpts('PATCH', bodyOf(it))); }
+        catch (e) { if (!gone(e)) throw e; newId = (await (await gfetch(path(dst), jsonOpts('POST', bodyOf(it)))).json()).id; }
       }
-      it.id = newId; if ((it.rev || 0) === rev) delete it.pending; else it.pending = 'update';
+      it.id = (want === 'p' ? PFX : '') + newId; if (want === 'p') it.cal = 'p'; else delete it.cal;
+      if ((it.rev || 0) === rev) delete it.pending; else it.pending = 'update';
     }
     saveLocal();
   }
@@ -324,22 +411,32 @@ async function sync(interactive = false) {
   if (!tok) { setSync('reauth'); return; }
   syncing = true; setSync('syncing');
   try {
-    const calId = await ensureCalendar();
+    const own = await ensureCalendar(), calId = own.id;
+    await identify(own);
     await flush(calId);
-    let raw = await listRaw(calId);
-    try { if (await reconcileTG(calId, raw)) raw = await listRaw(calId); }
-    catch (e) { if (e.auth) throw e; console.warn('Two Generation\'s', e); }
-    const remote = raw.map(fromEvent), merged = mergeRemote(remote);
+    let raw = await listRaw(calId), praw = [];
+    /* Turnos de tu socio: los de su calendario (si te lo ha compartido) */
+    if (partnerCal) { try { praw = await listRaw(partnerCal.id); } catch (e) { if (e.auth) throw e; praw = null; console.warn('socio', e); } }
+    if (praw) {
+      try { const ch = await reconcileTG(calId, raw, praw); if (ch.own) raw = await listRaw(calId); if (ch.partner) praw = await listRaw(partnerCal.id); }
+      catch (e) { if (e.auth) throw e; console.warn('Two Generation\'s', e); }
+    }
+    /* Las copias de Two Generation's que ya están en tu calendario no se repiten */
+    const ownKeys = new Set(raw.map(tgKey).filter(Boolean));
+    const remote = [...raw.map(fromEvent), ...(praw === null ? items.filter(i => i.cal === 'p' && !i.pending)
+      : praw.filter(e => !(tgKey(e) && ownKeys.has(tgKey(e)) && isTGEvent(e))).map(e => ({ ...fromEvent(e), id: PFX + e.id, cal: 'p' })))];
+    const merged = mergeRemote(remote);
     if (items.some(i => i.pending)) again = true;             /* algo se editó mientras sincronizaba: se envía en la siguiente vuelta */
     const before = JSON.stringify(items.map(({ rev, ...r }) => r)), after = JSON.stringify(merged.map(({ rev, ...r }) => r));
     items = merged; saveLocal(); store.set(LS.last, String(Date.now()));
     if (!store.get(LS.user)) loadUser();
     setSync('ok');
     if (before !== after) render();
+    renderSelFoot();
+    if (askWho && !whoShown && !$('#modal').classList.contains('show') && !$('#sheet').classList.contains('show')) { whoShown = true; openWho(); }
   } catch (e) {
     saveLocal();
-    if (e.nocal) { setSync('nocal'); openPickCal(e.list); }
-    else if (e.auth) setSync('reauth');
+    if (e.auth) setSync('reauth');
     else { setSync(navigator.onLine ? 'error' : 'offline'); if (e.status === 403) toast('Google ha rechazado el acceso: vuelve a iniciar sesión y acepta todos los permisos'); }
     console.warn('sync', e);
   } finally { syncing = false; if (again) { again = false; setTimeout(() => sync(false), 400); } }
@@ -365,18 +462,19 @@ async function switchAccount() {
   const u = await loadUser();
   if (u?.email && u.email === prevEmail) { closeSheet(); toast('Sigues conectado como ' + u.email); return; }
   /* Otra cuenta: se vuelve a buscar el calendario y se recargan los turnos desde ella */
-  [LS.cal, LS.calname, LS.last, LS.partner, LS.tomb].forEach(k => store.del(k)); partnerCal = null;
-  items = items.filter(i => i.pending); saveLocal();
+  ACCOUNT_KEYS.forEach(k => store.del(LS[k])); partnerCal = null; meChecked = false; askWho = false; whoShown = false; ownDesc = '';
+  items = items.filter(i => i.pending && i.cal !== 'p'); saveLocal();
   store.set(LS.conn, '1'); closeSheet(); await sync(false); renderSelFoot(); if (owner) render();
   toast((u?.email ? 'Conectado como ' + u.email : 'Cuenta cambiada') + (pend ? `. Se han enviado ${plural(pend, 'cambio pendiente', 'cambios pendientes')}` : ''));
 }
 function disconnectGoogle() {
   if (!confirm('¿Cerrar sesión de Google? Se borrará la copia de turnos de este móvil (en tu Google Calendar siguen igual).')) return;
   try { if (token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(token, () => {}); } catch (e) {}
-  token = null; [LS.conn, LS.tok, LS.cal, LS.calname, LS.last, LS.user, LS.data, LS.partner, LS.tomb].forEach(k => store.del(k)); items = []; partnerCal = null;
+  token = null; [LS.conn, LS.tok, LS.user, LS.data, ...ACCOUNT_KEYS.map(k => LS[k])].forEach(k => store.del(k)); items = [];
+  partnerCal = null; meChecked = false; askWho = false; whoShown = false; ownDesc = '';
   closeSheet(); setSync('local'); renderSelFoot(); if (owner) render(); toast('Sesión cerrada');
 }
-const SYNC_TEXT = { local: 'Sin conectar', ok: 'Sincronizado', syncing: 'Sincronizando…', pending: 'Guardando…', offline: 'Sin conexión', reauth: 'Toca para reconectar', error: 'Error · toca para reintentar', nocal: 'Elige el calendario' };
+const SYNC_TEXT = { local: 'Sin conectar', ok: 'Sincronizado', syncing: 'Sincronizando…', pending: 'Guardando…', offline: 'Sin conexión', reauth: 'Toca para reconectar', error: 'Error · toca para reintentar' };
 function setSync(s) {
   syncState = s;
   $$('[data-sync]').forEach(el => { el.dataset.s = s; const t = $('.txt', el); if (t) t.textContent = SYNC_TEXT[s]; });
@@ -431,10 +529,15 @@ let showAllPast = false, calMonth = null, selDay = null, animate = true;
 let period = store.get('turnos.period', 'mes'), tableTab = 'proximos', tableQ = '', tableAll = false, activeSec = 'inicio';
 const goalKey = () => 'turnos.goal.' + owner;
 
+/* Botones de modificar / borrar (los turnos del socio solo se pueden ver si no te deja editar su calendario) */
+const RO_MSG = 'Este turno está en el calendario de tu socio y solo te ha dado permiso para verlo.';
+const actionsHTML = i => canEdit(i)
+  ? `<div class="act"><button data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}">${ICON.edit}</button><button class="del" data-act="del" data-id="${esc(i.id)}" aria-label="Eliminar ${esc(i.title)}">${ICON.del}</button></div>`
+  : `<span class="ro-tag" title="${RO_MSG}">Solo ver</span>`;
 /* Estado de un turno para la tabla */
 function statusOf(i, now) {
   if (i.pending) return { t: 'Sin sincronizar', c: 'var(--money)' };
-  if (!i.dj || !KNOWN.includes(i.dj)) return { t: 'Sin DJ', c: 'var(--danger)' };
+  if (!effDJ(i)) return { t: 'Sin DJ', c: 'var(--danger)' };
   if (i.startMs <= now && now < i.endMs) return { t: 'Sonando', c: 'var(--ok)' };
   if (i.endMs < now) return { t: 'Cobrado', c: 'rgba(236,232,255,.6)' };
   const d = dayDiff(todayStr(), i.date);
@@ -492,7 +595,7 @@ function kpisHTML(list, now) {
 function passHTML(n, today, now) {
   if (!n) return `<section class="glass pass empty"><div class="pass-top"><span>Próximo turno</span></div><h2>Agenda libre</h2>No hay turnos próximos en esta agenda. Añade uno con el botón + o desde el calendario.</section>`;
   const live = n.startMs <= now, u = live ? { t: 'En curso', c: 'var(--ok)' } : urgency(dayDiff(today, n.date));
-  return `<section class="glass lift pass" style="--pc:${djColor(n.dj)}" aria-label="Próximo turno">
+  return `<section class="glass lift pass" style="--pc:${djColor(effDJ(n))}" aria-label="Próximo turno">
     <div class="pass-main">
       <div class="pass-top"><span>Próximo turno</span><span class="tag" style="--tc:${u.c}">${live ? EQ : ''}${u.t}</span></div>
       <h2>${esc(n.title)}</h2>
@@ -509,10 +612,11 @@ function passHTML(n, today, now) {
 function weekHTML(up, today) {
   const lim = addDays(today, 7), l = up.filter(i => i.date <= lim);
   return `<section class="glass panel"><div class="ph"><div><h3>Próximos 7 días</h3><p>${l.length ? plural(l.length, 'turno', 'turnos') + ' · ' + euro(l.reduce((s, i) => s + i.cache, 0)) : 'Semana libre'}</p></div></div>
-    <div class="week">${l.length ? l.map(i => `<button class="wk" style="--dc:${djColor(i.dj)}" data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}">
+    <div class="week">${l.length ? l.map(i => { const ed = canEdit(i), tag = ed ? 'button' : 'div';
+      return `<${tag} class="wk" style="--dc:${djColor(effDJ(i))}"${ed ? ` data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}"` : ''}>
       <div class="wd"><b>${+i.date.slice(8)}</b><span>${DOW_S[dowOf(i.date)]}</span></div>
       <div class="wt"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div>
-      <div class="wc">${euro(i.cache)}</div></button>`).join('') : `<div class="tbl-empty">Nada en los próximos 7 días.</div>`}</div></section>`;
+      <div class="wc">${euro(i.cache)}</div></${tag}>`; }).join('') : `<div class="tbl-empty">Nada en los próximos 7 días.</div>`}</div></section>`;
 }
 function chartHTML(list, now) {
   const curK = todayStr().slice(0, 7), mm = monthly(list, now);
@@ -529,15 +633,15 @@ function chartHTML(list, now) {
 function tableRows(list, now) {
   const q = normName(tableQ);
   let l = tableTab === 'proximos' ? list.filter(i => i.endMs >= now).sort(byStart) : tableTab === 'pasados' ? list.filter(i => i.endMs < now).sort((a, b) => b.startMs - a.startMs) : [...list].sort((a, b) => b.startMs - a.startMs);
-  if (q) l = l.filter(i => normName([i.title, i.local, i.lugar, i.llevar, DISPLAY[i.dj] || ''].join(' ')).includes(q));
+  if (q) l = l.filter(i => normName([i.title, i.local, i.lugar, i.llevar, DISPLAY[effDJ(i)] || ''].join(' ')).includes(q));
   const shown = tableAll ? l : l.slice(0, 8);
-  const rows = shown.map(i => { const s = statusOf(i, now); return `<tr class="${i.endMs < now ? 'past' : ''}" style="--dc:${djColor(i.dj)}">
+  const rows = shown.map(i => { const s = statusOf(i, now); return `<tr class="${i.endMs < now ? 'past' : ''}" style="--dc:${djColor(effDJ(i))}">
     <td class="c-d"><div class="t-date"><b>${+i.date.slice(8)}</b><span>${DOW_S[dowOf(i.date)]}<br>${MON_S[+i.date.slice(5, 7) - 1]} ${i.date.slice(2, 4)}</span></div></td>
     <td class="c-n"><div class="t-name"><b>${esc(i.title)}</b><span>${where(i)}</span></div></td>
     <td class="c-h">${i.allDay ? 'Todo el día' : `${i.start}–${i.end}<br><span style="color:var(--text3);font-size:12.5px">${fmtDur(i.endMs - i.startMs)}</span>`}</td>
     <td class="c-c"><span class="t-cache">${euro(i.cache)}</span></td>
     <td class="c-s"><span class="st" style="--sc:${s.c}">${s.t}</span>${i.dj === TWO_GEN ? ` <span class="st" style="--sc:var(--tg)">Two Gen</span>` : ''}</td>
-    <td class="c-a"><div class="act"><button data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}">${ICON.edit}</button><button class="del" data-act="del" data-id="${esc(i.id)}" aria-label="Eliminar ${esc(i.title)}">${ICON.del}</button></div></td></tr>`; }).join('');
+    <td class="c-a">${actionsHTML(i)}</td></tr>`; }).join('');
   return { html: l.length ? `<table class="tbl"><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Caché</th><th>Estado</th><th><span class="hidden">Acciones</span></th></tr></thead><tbody>${rows}</tbody></table>`
       : `<div class="tbl-empty">${q ? `Ningún turno coincide con «${esc(tableQ)}».` : tableTab === 'proximos' ? 'No hay turnos próximos. Pulsa + para añadir uno.' : 'Todavía no hay turnos aquí.'}</div>`,
     foot: l.length ? `<span>${plural(l.length, 'turno', 'turnos')} · ${euro(l.reduce((s, i) => s + i.cache, 0))}</span>${l.length > 8 ? `<button class="btn small" data-act="tblMore">${tableAll ? 'Ver menos' : `Ver los ${l.length}`}</button>` : ''}` : '' };
@@ -556,14 +660,14 @@ function calendarHTML(list) {
   let cells = '';
   for (let k = 0; k < 42; k++) {
     const d = addDays(gs, k), ev = byDay[d] || [], n = ev.length, cls = ['day']; if (+d.slice(5, 7) - 1 !== mIdx) cls.push('out'); if (d === today) cls.push('today'); if (n) cls.push('has'); if (d === selDay) cls.push('sel');
-    cells += `<button class="${cls.join(' ')}" data-act="day" data-d="${d}" aria-pressed="${d === selDay}" aria-label="${dateLabel(d)}${n ? ', ' + plural(n, 'turno', 'turnos') : ''}">${+d.slice(8)}<span class="dots">${ev.slice(0, 3).map(i => `<i style="--dc:${djColor(i.dj)}"></i>`).join('')}</span></button>`;
+    cells += `<button class="${cls.join(' ')}" data-act="day" data-d="${d}" aria-pressed="${d === selDay}" aria-label="${dateLabel(d)}${n ? ', ' + plural(n, 'turno', 'turnos') : ''}">${+d.slice(8)}<span class="dots">${ev.slice(0, 3).map(i => `<i style="--dc:${djColor(effDJ(i))}"></i>`).join('')}</span></button>`;
   }
   let detail = '';
   if (selDay) {
     const ev = (byDay[selDay] || []).sort(byStart), dw = dowOf(selDay);
     detail = `<div class="detail"><h4>${cap(dateLabel(selDay))}</h4>
-      ${ev.map(i => `<div class="drow" style="--dc:${djColor(i.dj)}"><div class="t-name"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div><span class="t-cache" style="font-size:20px">${euro(i.cache)}</span>
-        <div class="act"><button data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}">${ICON.edit}</button><button class="del" data-act="del" data-id="${esc(i.id)}" aria-label="Eliminar ${esc(i.title)}">${ICON.del}</button></div></div>`).join('') || `<div class="tbl-empty" style="padding:8px 0 4px;text-align:left">Sin turnos este día.</div>`}
+      ${ev.map(i => `<div class="drow" style="--dc:${djColor(effDJ(i))}"><div class="t-name"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div><span class="t-cache" style="font-size:20px">${euro(i.cache)}</span>
+        ${actionsHTML(i)}</div>`).join('') || `<div class="tbl-empty" style="padding:8px 0 4px;text-align:left">Sin turnos este día.</div>`}
       <div class="quick">${LACLUB.cache[dw] ? `<button class="btn small primary" data-act="quick" data-d="${selDay}">${ICON.bolt}Añadir ${LACLUB.title} (${LACLUB.cache[dw]}€)</button>` : ''}<button class="btn small" data-act="add" data-d="${selDay}">${ICON.plus}Turno a mano</button></div></div>`;
   }
   return `<section class="glass panel anchor" id="calendario"><div class="cal-h"><div class="ph" style="margin:0"><div><h3>${MON_L[mIdx]} ${ms.slice(0, 4)}</h3><p>Toca un día para ver o añadir turnos</p></div></div><div class="nav"><button class="iconbtn" data-act="prev" aria-label="Mes anterior">${ICON.left}</button><button class="iconbtn" data-act="next" aria-label="Mes siguiente">${ICON.right}</button></div></div>
@@ -595,15 +699,17 @@ function greeting() {
 function viewPanel() {
   const list = panelItems(), now = Date.now(), today = todayStr();
   const up = list.filter(i => i.endMs >= now).sort(byStart);
+  const mine = !myDJ() || owner === myDJ(), waiting = isConnected() && !mine && !store.get(LS.partner);
   const who = owner === 'Clement' ? `<img class="wm" src="img/clement.png" alt="CLEMENT">` : `<img class="wm two" src="img/djbota.png" alt="DJ BOTA">`;
   const periods = [['mes', 'Este mes'], ['año', 'Este año'], ['todo', 'Todo']];
   return `<header class="glass topbar"><button class="who" data-act="switch" aria-label="Cambiar de agenda (ahora: ${DISPLAY[owner]})">${who}<span class="sw">${ICON.swap}</span></button>
       <nav class="tabs" aria-label="Secciones">${SECTIONS.map(([k, t, ic]) => `<button data-act="go" data-to="${k}" class="${activeSec === k ? 'on' : ''}">${ICON[ic]}${t}</button>`).join('')}</nav>
       <div class="tools">${syncPill()}<button class="btn primary small addtop" data-act="add">${ICON.plus}Añadir turno</button><button class="iconbtn" data-act="settings" aria-label="Ajustes">${ICON.gear}</button></div></header>
     <div class="board">
-      <div class="hello anchor o-hello" id="inicio"><div><h1>${greeting()}, ${DISPLAY[owner]}</h1><p>${cap(dateLabel(today))}. ${up.length ? `Tienes ${plural(up.length, 'turno próximo', 'turnos próximos')}.` : 'No tienes turnos próximos.'}</p></div>
+      <div class="hello anchor o-hello" id="inicio"><div><h1>${mine ? `${greeting()}, ${DISPLAY[owner]}` : `Agenda de ${DISPLAY[owner]}`}</h1><p>${cap(dateLabel(today))}. ${up.length ? `${mine ? 'Tienes' : 'Tiene'} ${plural(up.length, 'turno próximo', 'turnos próximos')}.` : `${mine ? 'No tienes' : 'No tiene'} turnos próximos.`}</p></div>
         <div class="glass seg" role="tablist" aria-label="Periodo de las cifras">${periods.map(([k, t]) => `<button role="tab" aria-selected="${period === k}" class="${period === k ? 'on' : ''}" data-act="period" data-k="${k}">${t}</button>`).join('')}</div></div>
-      ${!isConnected() ? `<div class="glass connect o-connect"><div><b>Conecta tu Google Calendar</b><span>Inicia sesión: tus turnos se guardan en tu calendario «turnos_dj» (si no existe, se crea).</span></div><button class="btn primary" data-act="connect">Iniciar sesión con Google</button></div>` : ''}
+      ${!isConnected() ? `<div class="glass connect o-connect"><div><b>Conecta tu Google Calendar</b><span>Inicia sesión: tus turnos se guardan en tu calendario «turnos_dj» (si no existe, se crea).</span></div><button class="btn primary" data-act="connect">Iniciar sesión con Google</button></div>`
+        : waiting ? `<div class="glass hint o-connect"><div><b>Aún no ves los turnos de ${DISPLAY[owner]}</b><span>Saldrán aquí en cuanto ${DISPLAY[owner]} inicie sesión en la app y te comparta su calendario «${CALENDAR_NAME}». Mientras, ves los de Two Generation's y los que estén en tu calendario.</span></div><button class="btn" data-act="settings">Ver cómo</button></div>` : ''}
       <div class="o-kpis">${kpisHTML(list, now)}</div>
       <div class="c-8 o-chart">${chartHTML(list, now)}</div>
       <div class="c-4 o-pass">${passHTML(up[0], today, now)}</div>
@@ -653,6 +759,7 @@ function renderSelFoot() {
   $('#selFoot').innerHTML = isConnected()
     ? `${syncPill()}<span class="mail">${u?.email ? esc(u.email) : 'Conectado a Google Calendar'}</span><button class="btn small" data-act="account">Cambiar de cuenta</button>`
     : `<button class="btn primary" data-act="connect">Iniciar sesión con Google</button><span class="mail">Tus turnos se guardan en tu calendario «turnos_dj»</span>`;
+  $$('.owner').forEach(b => b.classList.toggle('mine', isConnected() && b.dataset.own === myDJ()));
   setSync(syncState);
 }
 function openGoal() {
@@ -674,6 +781,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'tblQ') { tableQ = e.target.value; tableAll = false; refreshTable(); }
 });
 document.addEventListener('submit', e => {
+  if (e.target.id === 'shareForm') { e.preventDefault(); shareWithPartner(); return; }
   if (e.target.id !== 'goalForm') return; e.preventDefault();
   const v = parseFloat(String($('#g_val').value).replace(',', '.'));
   if (!(v > 0)) { $('#g_val').focus(); return; }
@@ -706,15 +814,21 @@ function submitForm(ev) {
   if (!v('f_title') || !v('f_lugar') || !v('f_local') || !date || !start || !end || !isFinite(cache) || cache < 0) { err.textContent = 'Rellena todos los campos obligatorios.'; err.classList.add('show'); return; }
   const endDate = end <= start ? addDays(date, 1) : date;
   const base = editingId ? items.find(x => x.id === editingId) : null;
-  const it = { id: base ? base.id : 'tmp_' + uid(), tg: base?.tg || '', title: v('f_title'), dj: v('f_dj'), lugar: v('f_lugar'), local: v('f_local'), llevar: v('f_llevar'), cache,
+  const it = { id: base ? base.id : 'tmp_' + uid(), cal: base?.cal, tg: base?.tg || '', title: v('f_title'), dj: v('f_dj'), lugar: v('f_lugar'), local: v('f_local'), llevar: v('f_llevar'), cache,
     extra: base ? base.extra || [] : [], date, start, end, startMs: zonedToMs(date, start), endMs: zonedToMs(endDate, end), allDay: false,
     rev: (base?.rev || 0) + 1, pending: base ? (base.pending === 'create' || String(base.id).startsWith('tmp_') ? 'create' : 'update') : 'create' };
+  if (!it.cal) delete it.cal;
   if (base) items[items.indexOf(base)] = it; else items.push(it);
-  closeModal(); markDirty(); render(); toast(base ? 'Cambios guardados' : 'Turno añadido');
+  const toPartner = isConnected() && it.dj === partnerDJ() && it.dj !== myDJ();
+  closeModal(); markDirty(); render();
+  toast(!toPartner ? (base ? 'Cambios guardados' : 'Turno añadido')
+    : partnerWritable() ? `${base ? 'Cambios guardados' : 'Turno añadido'} en el calendario de ${DISPLAY[it.dj]}`
+    : `Guardado en tu calendario: ${DISPLAY[it.dj]} aún no te ha compartido el suyo`);
 }
 function deleteItem(id) {
   const it = items.find(x => x.id === id); if (!it) return;
-  if (!confirm(`¿Eliminar «${it.title}» del ${dateLabel(it.date)}?\nTambién se borrará de tu Google Calendar.`)) return;
+  if (!canEdit(it)) { toast(RO_MSG); return; }
+  if (!confirm(`¿Eliminar «${it.title}» del ${dateLabel(it.date)}?\nTambién se borrará ${it.cal === 'p' ? 'del calendario de tu socio' : 'de tu Google Calendar'}.`)) return;
   if (it.pending === 'create' || String(it.id).startsWith('tmp_')) items = items.filter(x => x.id !== id); else { it.pending = 'delete'; it.rev = (it.rev || 0) + 1; }
   markDirty(); render(); toast('Turno eliminado');
 }
@@ -723,21 +837,90 @@ function deleteItem(id) {
 const closeSheet = () => { $('#sheet').classList.remove('show'); $('#sheet').setAttribute('aria-hidden', 'true'); };
 function openSheet(html) { $('#sheetBody').innerHTML = html; $('#sheet').classList.add('show'); $('#sheet').setAttribute('aria-hidden', 'false'); }
 function openSettings() {
-  const u = (() => { try { return JSON.parse(store.get(LS.user, 'null')); } catch (e) { return null; } })(), last = +store.get(LS.last, 0);
-  openSheet(`<h3>Ajustes</h3><p class="ms">Los turnos se guardan en tu Google Calendar.</p>
-    <div class="kv"><span>Cuenta</span><span>${esc(u?.email || (isConnected() ? 'Conectada' : 'Sin conectar'))}</span></div>
-    <div class="kv"><span>Tu calendario</span><span>${esc(store.get(LS.calname) || CALENDAR_NAME)}</span></div>
-    <div class="kv"><span>Calendario del socio</span><span>${store.get(LS.partner) ? 'Compartido: los turnos de Two Generation\'s se copian en los dos' : 'Sin compartir todavía'}</span></div>
+  const u = currentUser(), last = +store.get(LS.last, 0), me = myDJ(), pd = partnerDJ(), conn = isConnected();
+  const pState = !store.get(LS.partner) ? 'Sin compartir todavía' : partnerWritable() ? 'Conectado: ves sus turnos y puedes cambiarlos' : 'Conectado: solo puedes ver sus turnos';
+  const clash = me && store.get(LS.partnerDJ) === me;
+  const misplaced = conn && me && partnerWritable() ? items.filter(i => i.cal !== 'p' && i.dj === pd && !i.pending).length : 0;
+  const rem = reminders();
+  openSheet(`<h3>Ajustes</h3><p class="ms">Tus turnos se guardan en tu Google Calendar, en tu calendario «${CALENDAR_NAME}».</p>
+    <div class="kv"><span>Cuenta</span><span>${esc(u?.email || (conn ? 'Conectada' : 'Sin conectar'))}</span></div>
+    ${conn ? `<div class="kv"><span>Esta cuenta es de</span><span>${me ? DISPLAY[me] : 'Sin elegir'} <button class="linkbtn" data-act="whoAsk">${me ? 'Cambiar' : 'Elegir'}</button></span></div>
+    <div class="kv"><span>Calendario de ${pd ? DISPLAY[pd] : 'tu socio'}</span><span>${pState}</span></div>
+    ${clash ? `<p class="note warn-note">Tu socio también ha dicho que es ${DISPLAY[me]}. Uno de los dos tiene que cambiarlo en «Esta cuenta es de».</p>` : ''}
+
+    <h4 class="sh">Compartir con tu socio</h4>
+    <p class="note">Para que ${pd ? DISPLAY[pd] : 'tu socio'} vea tus turnos (y se copien los de Two Generation's), comparte con él tu calendario. Le llegará un correo de Google: tiene que pulsar «Añadir este calendario». Él tiene que hacer lo mismo contigo.</p>
+    <form class="share" id="shareForm"><input id="p_email" type="email" inputmode="email" autocomplete="email" placeholder="Correo de tu socio" value="${esc(store.get(LS.pmail) || '')}" aria-label="Correo de tu socio"><button class="btn primary" type="submit">Compartir</button></form>
+    <div class="note" id="shareList"></div>
+    ${misplaced ? `<div class="kv"><span>Tienes ${plural(misplaced, 'turno', 'turnos')} de ${DISPLAY[pd]} en tu calendario</span><span><button class="btn small" data-act="movePartner">Pasarlos al suyo</button></span></div>` : ''}
+
+    <h4 class="sh">Avisos en el móvil</h4>
+    <div class="chips-pick" role="group" aria-label="Avisos antes de cada turno">${REM_OPTIONS.map(([m, t]) => `<button class="chip-t" data-act="rem" data-m="${m}" aria-pressed="${rem.includes(m)}">${t}</button>`).join('')}</div>
+    <p class="note">Te avisa la app de Google Calendar del móvil (tenla instalada, con tu cuenta y las notificaciones activadas). Valen para los turnos de tu calendario: los tuyos y los de Two Generation's.</p>` : ''}
+
+    <h4 class="sh">Sincronización</h4>
     <div class="kv"><span>Última sincronización</span><span>${last ? new Intl.DateTimeFormat('es-ES', { timeZone: TZ, dateStyle: 'short', timeStyle: 'short' }).format(last) : '—'}</span></div>
-    <p class="note">Cada cuenta de Google tiene su propio calendario «${CALENDAR_NAME}». Para que los turnos de Two Generation's salgan en los dos, cada uno comparte su «${CALENDAR_NAME}» con el otro con el permiso «Hacer cambios en eventos»; el resto de turnos se queda solo en el calendario de cada uno.</p>
-    <p class="note">Se actualiza solo cada minuto con la app abierta y al volver a ella. Si no tienes internet puedes seguir añadiendo y editando turnos: se enviarán al reconectar. Cada hora Google pide reconectar: toca el indicador de estado.</p>
-    <div class="mact" style="flex-wrap:wrap">${isConnected() ? `<button class="btn primary" data-act="syncnow">Sincronizar ahora</button><button class="btn" data-act="account">Cambiar de cuenta</button><button class="btn danger" data-act="logout">Cerrar sesión</button>` : `<button class="btn primary" data-act="connect">Iniciar sesión con Google</button>`}<button class="btn" data-act="closeSheet">Cerrar</button></div>`);
+    <p class="note">Se actualiza sola cada minuto con la app abierta y al volver a ella. Sin internet puedes seguir añadiendo y editando turnos: se envían al reconectar. Cada hora Google pide reconectar: toca el indicador de estado.</p>
+    <div class="mact" style="flex-wrap:wrap">${conn ? `<button class="btn primary" data-act="syncnow">Sincronizar ahora</button><button class="btn" data-act="account">Cambiar de cuenta</button><button class="btn danger" data-act="logout">Cerrar sesión</button>` : `<button class="btn primary" data-act="connect">Iniciar sesión con Google</button>`}<button class="btn" data-act="closeSheet">Cerrar</button></div>`);
+  if (conn) loadShares();
 }
-async function openPickCal(list) {
-  if (!list) { if (!(await getToken(false))) { toast('Toca el indicador de estado para reconectar'); return; } try { list = await listCalendars(); } catch (e) { toast('No se pudo leer tu lista de calendarios'); return; } }
-  openSheet(`<h3>Elige el calendario de turnos</h3><p class="ms">${list.length ? `No he encontrado uno llamado «${esc(CALENDAR_NAME)}» en ${esc(currentUser()?.email || 'esta cuenta')}. Elige dónde están tus turnos:` : `${esc(currentUser()?.email || 'Esta cuenta')} no tiene calendarios en los que se pueda escribir.`} Si «${esc(CALENDAR_NAME)}» es de otra cuenta, compártelo con esta con el permiso «Hacer cambios en eventos».</p>
-    <div class="list-pick">${list.map(c => `<button class="btn" data-act="choosecal" data-id="${esc(c.id)}" data-name="${esc(c.name)}">${esc(c.name)}${c.primary ? ' (principal)' : ''}</button>`).join('')}</div>
-    <div class="mact"><button class="btn" data-act="account">Usar otra cuenta</button><button class="btn" data-act="closeSheet">Cancelar</button></div>`);
+/* Con quién está compartido tu calendario (lo lee de Google) */
+async function loadShares() {
+  const box = $('#shareList'), ownId = store.get(LS.cal); if (!box || !ownId || !(await getToken(false))) return;
+  try {
+    const j = await (await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}/acl`)).json();
+    const me = (currentUser()?.email || '').toLowerCase();
+    const l = (j.items || []).filter(a => a.scope?.type === 'user' && a.role !== 'owner' && a.scope.value.toLowerCase() !== me);
+    if ($('#shareList')) $('#shareList').innerHTML = l.length ? `Compartido con: ${l.map(a => `<b>${esc(a.scope.value)}</b> (${a.role === 'writer' ? 'puede editar' : 'solo ver'})`).join(', ')}` : 'Todavía no lo has compartido con nadie.';
+  } catch (e) { if (box.isConnected) box.textContent = ''; }
+}
+async function shareWithPartner() {
+  const email = ($('#p_email')?.value || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Escribe el correo de Google de tu socio'); $('#p_email')?.focus(); return; }
+  if (email === (currentUser()?.email || '').toLowerCase()) { toast('Ese es tu correo: escribe el de tu socio'); return; }
+  const tok = await getToken(true);                                    /* primera instrucción: conserva el gesto del toque */
+  const ownId = store.get(LS.cal);
+  if (!tok || !ownId) { toast(tok ? 'Sincroniza primero tu calendario' : LOGIN_FAIL); return; }
+  try {
+    await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}/acl?sendNotifications=true`, jsonOpts('POST', { role: 'writer', scope: { type: 'user', value: email } }));
+    store.set(LS.pmail, email); toast(`Compartido con ${email}. Le llegará un correo de Google para añadirlo.`); loadShares();
+  } catch (e) { toast(e.auth ? 'Vuelve a conectar con Google e inténtalo otra vez' : 'No se pudo compartir: revisa el correo e inténtalo de nuevo'); }
+}
+async function toggleReminder(m) {
+  const tok = await getToken(true), calId = store.get(LS.cal);               /* primera instrucción: conserva el gesto del toque */
+  if (!tok || !calId) { toast(tok ? 'Sincroniza primero tu calendario' : LOGIN_FAIL); return; }
+  const cur = reminders(), next = cur.includes(m) ? cur.filter(x => x !== m) : [...cur, m].sort((a, b) => b - a).slice(0, 5);
+  try {
+    await setReminders(calId, next);
+    $$('[data-act="rem"]').forEach(b => b.setAttribute('aria-pressed', String(next.includes(+b.dataset.m))));
+    toast(next.length ? 'Avisos guardados' : 'Avisos desactivados');
+  } catch (e) { toast('No se pudieron cambiar los avisos: comprueba la conexión'); }
+}
+/* Pasa a su calendario los turnos de tu socio que estaban guardados en el tuyo (de cuando había un solo calendario) */
+function movePartnerTurnos() {
+  const pd = partnerDJ(), l = items.filter(i => i.cal !== 'p' && i.dj === pd && !i.pending);
+  if (!l.length || !partnerWritable()) return;
+  if (!confirm(`¿Pasar ${plural(l.length, 'turno', 'turnos')} de ${DISPLAY[pd]} a su calendario? Se quitarán del tuyo.`)) return;
+  l.forEach(i => { i.pending = 'update'; i.rev = (i.rev || 0) + 1; });
+  closeSheet(); markDirty(); toast(`Pasando ${plural(l.length, 'turno', 'turnos')} al calendario de ${DISPLAY[pd]}…`);
+}
+/* ¿De quién es esta cuenta? Se pregunta una vez (si tu socio ya lo eligió, se deduce solo) */
+function openWho() {
+  openSheet(`<h3>¿De quién es esta cuenta?</h3><p class="ms">${esc(currentUser()?.email || 'Esta cuenta de Google')} guarda los turnos de una persona en su calendario «${CALENDAR_NAME}». Elige quién eres: tus turnos irán a tu calendario, los de tu socio al suyo y los de Two Generation's a los dos.</p>
+    <div class="who-pick">
+      <button class="who-opt" style="--oc:var(--clement)" data-act="who" data-dj="Clement"><img src="img/clement.png" alt="Soy CLEMENT"></button>
+      <button class="who-opt" style="--oc:var(--bota)" data-act="who" data-dj="DJ Bota"><img src="img/djbota.png" alt="Soy DJ BOTA"></button>
+    </div>
+    <div class="mact"><button class="btn" data-act="closeSheet">Ahora no</button></div>`);
+}
+async function setWho(dj) {
+  closeSheet(); store.set(LS.me, dj); askWho = false; whoShown = true;
+  const ownId = store.get(LS.cal);
+  if (ownId && meChecked && await getToken(false)) { try { await saveMark(ownId, { dj, avisos: readMark(ownDesc).avisos }); } catch (e) { console.warn('marca', e); } }
+  else meChecked = false;                                  /* se guarda en Google en la próxima sincronización */
+  toast(`Listo: esta cuenta es de ${DISPLAY[dj]}`); renderSelFoot();
+  if (!owner) chooseOwner(dj); else render();
+  if (isConnected()) sync(false);
 }
 
 /* ───────────── eventos de la interfaz ───────────── */
@@ -755,17 +938,19 @@ document.addEventListener('click', e => {
     case 'own': chooseOwner(t.dataset.own); break;
     case 'switch': transition(() => { $('#selector').classList.remove('hidden'); $('#dock').classList.add('hidden'); renderSelFoot(); }); break;
     case 'connect': connectGoogle(); break;
-    case 'sync': if (!isConnected()) connectGoogle(); else if (syncState === 'nocal') openPickCal(); else sync(true); break;
+    case 'sync': if (!isConnected()) connectGoogle(); else sync(true); break;
     case 'syncnow': closeSheet(); sync(true); break;
     case 'settings': openSettings(); break;
     case 'closeSheet': closeSheet(); break;
     case 'logout': disconnectGoogle(); break;
     case 'account': switchAccount(); break;
-    case 'pickcal': openPickCal(); break;
-    case 'choosecal': store.set(LS.cal, id); store.set(LS.calname, t.dataset.name); closeSheet(); toast('Calendario elegido'); sync(true); break;
+    case 'who': setWho(t.dataset.dj); break;
+    case 'whoAsk': openWho(); break;
+    case 'rem': toggleReminder(+t.dataset.m); break;
+    case 'movePartner': movePartnerTurnos(); break;
     case 'add': openForm(null, d); break;
     case 'quick': openQuick(d); break;
-    case 'edit': { const it = items.find(x => x.id === id); if (it) openForm(it); break; }
+    case 'edit': { const it = items.find(x => x.id === id); if (it) { if (canEdit(it)) openForm(it); else toast(RO_MSG); } break; }
     case 'del': deleteItem(id); break;
     case 'day': selDay = selDay === d ? null : d; if (selDay && selDay.slice(0, 7) !== calMonth.slice(0, 7)) calMonth = selDay.slice(0, 7) + '-01'; render(); break;
     case 'prev': calMonth = addDays(calMonth, -1).slice(0, 7) + '-01'; render(); break;

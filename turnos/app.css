@@ -139,6 +139,13 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
 .connect b{display:block;font-size:15px;margin-bottom:2px}
 .connect span{font-size:13.5px;color:var(--text2)}
 
+/* Aviso: aún no ves los turnos de tu socio */
+.hint{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:18px 20px;border-color:color-mix(in srgb,var(--accent) 40%,var(--edge))}
+.hint b{display:block;font-size:15px;margin-bottom:2px}
+.hint span{font-size:13.5px;color:var(--text2)}
+.hint > div{flex:1 1 280px}
+.ro-tag{display:inline-block;font-size:12px;font-weight:600;color:var(--text3);white-space:nowrap;padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.06)}
+
 /* ───── KPIs ───── */
 .kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media (min-width:1000px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}}
@@ -419,11 +426,36 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
   .grab{display:block;width:40px;height:5px;border-radius:3px;background:var(--edge-2);margin:0 auto 14px}
 }
 
+/* ───── Ajustes: secciones, compartir, avisos, ¿de quién es la cuenta? ───── */
+.sh{font-size:14px;font-weight:700;letter-spacing:-.005em;margin:20px 0 6px;padding-top:14px;border-top:1px solid var(--edge)}
+.linkbtn{margin-left:6px;padding:2px 9px;border-radius:999px;font-size:12.5px;font-weight:700;color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.warn-note{color:var(--danger)}
+.share{display:flex;gap:8px;margin:8px 0 2px}
+.share input{flex:1;min-width:0;background:rgba(0,0,0,.25);border:1px solid var(--edge);border-radius:999px;padding:11px 15px;font-size:16px;transition:border-color .2s,box-shadow .2s}
+.share input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.chips-pick{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 2px}
+.chip-t{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:999px;border:1px solid var(--edge);background:rgba(255,255,255,.06);font-size:13.5px;font-weight:600;color:var(--text2);transition:background .25s,color .25s,border-color .25s,transform .2s var(--spring)}
+.chip-t::before{content:"";width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.2);transition:background .25s,box-shadow .25s}
+.chip-t[aria-pressed=true]{color:var(--text);border-color:color-mix(in srgb,var(--accent) 60%,transparent);background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.chip-t[aria-pressed=true]::before{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.chip-t:active{transform:scale(.95)}
+.who-pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:4px 0 2px}
+.who-opt{display:grid;place-items:center;height:118px;padding:18px;border-radius:20px;border:1px solid color-mix(in srgb,var(--oc) 40%,var(--edge));
+  background:linear-gradient(160deg,color-mix(in srgb,var(--oc) 24%,rgba(255,255,255,.08)),rgba(255,255,255,.03));transition:transform .35s var(--spring),box-shadow .35s,border-color .3s}
+.who-opt img{max-width:100%;max-height:66px;filter:drop-shadow(0 0 16px color-mix(in srgb,var(--oc) 60%,transparent))}
+.who-opt:hover,.who-opt:focus-visible{transform:translateY(-3px);border-color:color-mix(in srgb,var(--oc) 75%,transparent);box-shadow:0 18px 40px -16px color-mix(in srgb,var(--oc) 85%,transparent)}
+.who-opt:active{transform:scale(.96)}
+/* Tu tarjeta en el selector */
+.owner.mine::after{content:"Tu cuenta";position:absolute;top:12px;right:12px;padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:700;color:var(--stage);background:var(--oc);box-shadow:0 6px 16px -6px var(--oc)}
+
 /* ───── Aviso flotante ───── */
 #toast{position:fixed;left:50%;bottom:calc(96px + var(--safe-b));transform:translate(-50%,24px) scale(.95);z-index:120;max-width:90vw;text-align:center;
   background:rgba(255,255,255,.9);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);color:var(--stage);font-size:14px;font-weight:600;padding:12px 18px;border-radius:999px;box-shadow:0 18px 40px -10px rgba(0,0,0,.6);
   opacity:0;pointer-events:none;transition:opacity .25s,transform .45s var(--spring)}
 #toast.show{opacity:1;transform:translate(-50%,0) scale(1)}
+/* Con una hoja abierta, el aviso sale arriba para no tapar los botones */
+body:has(.overlay.show) #toast{bottom:auto;top:calc(var(--safe-t) + 14px);transform:translate(-50%,-24px) scale(.95)}
+body:has(.overlay.show) #toast.show{transform:translate(-50%,0) scale(1)}
 
 ::view-transition-old(root),::view-transition-new(root){animation-duration:.5s;animation-timing-function:var(--ease-out)}
 
