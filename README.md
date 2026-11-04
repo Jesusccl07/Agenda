@@ -1,16 +1,10 @@
-# Exámenes ASIR 2 + Turnos DJ
+# 🎧 Turnos DJ
 
-Dos apps móviles (PWA) que se sincronizan con Google Calendar y funcionan sin conexión.
-
-## 📝 Exámenes
-Apunta exámenes con autorrelleno según el horario y sincronización con el calendario «ASIR 2».
-
-Ábrela en: https://jesusccl07.github.io/examenes/
-
-## 🎧 Turnos DJ
-Turnos, cachés e ingresos de **Clement** y **DJ Bota** leyendo y escribiendo en el calendario «Nexora».
+App móvil (PWA) con los turnos, cachés e ingresos de **Clement** y **DJ Bota**, leyendo y escribiendo en el calendario «Nexora» de Google Calendar. Funciona sin conexión.
 
 Ábrela en: https://jesusccl07.github.io/examenes/turnos/
+
+(La dirección https://jesusccl07.github.io/examenes/ también lleva directamente a Turnos DJ.)
 
 - Al abrir eliges panel (Clement o DJ Bota). Los turnos marcados como *Two Generation's* salen en los dos.
 - Estadísticas, próximo turno con cuenta atrás, ingresos por mes (cobrado y previsto) y calendario con alta rápida («DJ LA CLUB»: viernes 80 €, sábado 100 €).
@@ -18,7 +12,7 @@ Turnos, cachés e ingresos de **Clement** y **DJ Bota** leyendo y escribiendo en
 - Se actualiza sola cada minuto con la app abierta.
 - Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
 
-Usa el mismo inicio de sesión de Google (mismo Client ID) que la app de Exámenes. Permisos que pide: ver y editar eventos de calendario, ver la lista de calendarios y tu nombre/correo.
+Permisos que pide al iniciar sesión con Google: ver y editar eventos de calendario, ver la lista de calendarios y tu nombre/correo.
 
-### Instalarla como app
+## Instalarla como app
 Abre el enlace en Safari (iPhone) o Chrome (Android) → *Añadir a pantalla de inicio*.
