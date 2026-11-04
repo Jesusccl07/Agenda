@@ -3,9 +3,10 @@
    Turnos DJ — PWA de turnos sincronizada con Google Calendar
    · Cada cuenta de Google tiene su propio calendario «turnos_dj» (la app lo crea si no existe;
      si encuentra el antiguo «Nexora» de esa cuenta, lo renombra a «turnos_dj»).
-   · Cada cuenta dice una vez de quién es (CLEMENT o DJ BOTA). Se ven los turnos de los dos: los tuyos de tu
+   · Cada cuenta dice una vez de quién es (CLEMENT o DJ BOTA). En la app se ven los turnos de los dos: los tuyos de tu
      calendario y los de tu socio del suyo (si te lo ha compartido). Cada turno se guarda en el calendario de su DJ.
-   · Los turnos de Two Generation's se copian en los dos calendarios.
+   · El calendario del socio se lee pero queda OCULTO en tu Google Calendar: ahí solo ves tus turnos y los de
+     Two Generation's, que se copian en los dos calendarios.
    · Avisos en el móvil: recordatorios de Google Calendar en tu «turnos_dj» (la app de Google Calendar los muestra).
    · Inicio de sesión con Google (Client ID propio de la web en jesusccl07.github.io).
    · Google Calendar es la fuente de verdad; en el móvil se guarda una copia para
@@ -210,9 +211,9 @@ const normName = s => String(s || '').trim().toLowerCase();
 async function listCalendars() {
   const out = []; let pt = '';
   do {
-    const j = await (await gfetch(`${CAL_API}/users/me/calendarList?minAccessRole=reader&maxResults=250${pt ? '&pageToken=' + encodeURIComponent(pt) : ''}`)).json();
+    const j = await (await gfetch(`${CAL_API}/users/me/calendarList?minAccessRole=reader&showHidden=true&maxResults=250${pt ? '&pageToken=' + encodeURIComponent(pt) : ''}`)).json();
     out.push(...(j.items || []).map(c => ({ id: c.id, name: c.summaryOverride || c.summary || c.id, summary: c.summary || '', override: c.summaryOverride || '',
-      primary: !!c.primary, owner: c.accessRole === 'owner', writer: c.accessRole === 'owner' || c.accessRole === 'writer',
+      primary: !!c.primary, owner: c.accessRole === 'owner', writer: c.accessRole === 'owner' || c.accessRole === 'writer', hidden: !!c.hidden, selected: !!c.selected,
       reminders: (c.defaultReminders || []).filter(r => r.method === 'popup').map(r => r.minutes) }))); pt = j.nextPageToken || '';
   } while (pt);
   return out;
@@ -257,6 +258,11 @@ async function ensureCalendar() {
   partnerCal = others.find(c => c.id === pid) || named.find(c => c.writer) || named[0] || old.find(c => c.writer) || old[0] || null;
   if (partnerCal) { store.set(LS.partner, partnerCal.id); store.set(LS.partnerW, partnerCal.writer ? '1' : '0'); }
   else { store.del(LS.partner); store.del(LS.partnerW); }
+  /* Sus turnos se ven en la app, pero no en tu Google Calendar: su calendario queda oculto en tu lista */
+  if (partnerCal && (!partnerCal.hidden || partnerCal.selected)) {
+    try { await gfetch(`${CAL_API}/users/me/calendarList/${encodeURIComponent(partnerCal.id)}`, jsonOpts('PATCH', { hidden: true, selected: false })); partnerCal.hidden = true; partnerCal.selected = false; }
+    catch (e) { if (e.auth) throw e; console.warn('ocultar calendario del socio', e); }
+  }
   return own;
 }
 
@@ -859,7 +865,7 @@ const closeSheet = () => { $('#sheet').classList.remove('show'); $('#sheet').set
 function openSheet(html) { $('#sheetBody').innerHTML = html; $('#sheet').classList.add('show'); $('#sheet').setAttribute('aria-hidden', 'false'); }
 function openSettings() {
   const u = currentUser(), last = +store.get(LS.last, 0), me = myDJ(), pd = partnerDJ(), conn = isConnected();
-  const pState = !store.get(LS.partner) ? 'Sin compartir todavía' : partnerWritable() ? 'Conectado: ves sus turnos y puedes cambiarlos' : 'Conectado: solo puedes ver sus turnos';
+  const pState = !store.get(LS.partner) ? 'Sin compartir todavía' : partnerWritable() ? 'Conectado: ves sus turnos en la app y puedes cambiarlos' : 'Conectado: ves sus turnos en la app (solo ver)';
   const clash = me && store.get(LS.partnerDJ) === me;
   const misplaced = conn && me && partnerWritable() ? items.filter(i => i.cal !== 'p' && i.dj === pd && !i.pending).length : 0;
   const rem = reminders();
@@ -870,7 +876,7 @@ function openSettings() {
     ${clash ? `<p class="note warn-note">Tu socio también ha dicho que es ${DISPLAY[me]}. Uno de los dos tiene que cambiarlo en «Esta cuenta es de».</p>` : ''}
 
     <h4 class="sh">Compartir con tu socio</h4>
-    <p class="note">Para que ${pd ? DISPLAY[pd] : 'tu socio'} vea tus turnos (y los de Two Generation's), escribe su correo, pulsa «Compartir» y envíale el enlace que te da la app: al abrirlo, su app añade tu calendario. ${store.get(LS.partner) ? '' : `Para ver los suyos, ${pd ? DISPLAY[pd] : 'tu socio'} tiene que hacer lo mismo contigo desde su app.`}</p>
+    <p class="note">Para que ${pd ? DISPLAY[pd] : 'tu socio'} vea tus turnos en su app, escribe su correo, pulsa «Compartir» y envíale el enlace que te da la app. ${store.get(LS.partner) ? '' : `Para ver los suyos, ${pd ? DISPLAY[pd] : 'tu socio'} tiene que hacer lo mismo contigo desde su app.`} Los turnos del otro se ven solo en la app: en el Google Calendar de cada uno salen solo los suyos y los de Two Generation's.</p>
     <form class="share" id="shareForm"><input id="p_email" type="email" inputmode="email" autocomplete="email" placeholder="Correo de tu socio" value="${esc(store.get(LS.pmail) || '')}" aria-label="Correo de tu socio"><button class="btn primary" type="submit">Compartir</button></form>
     <div class="note" id="shareList"></div>
     ${misplaced ? `<div class="kv"><span>Tienes ${plural(misplaced, 'turno', 'turnos')} de ${DISPLAY[pd]} en tu calendario</span><span><button class="btn small" data-act="movePartner">Pasarlos al suyo</button></span></div>` : ''}
@@ -904,7 +910,7 @@ async function shareWith(email) {
   const ownId = store.get(LS.cal);
   if (!tok || !ownId) { toast(tok ? 'Sincroniza primero tu calendario' : LOGIN_FAIL); return; }
   try {
-    await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}/acl?sendNotifications=true`, jsonOpts('POST', { role: 'writer', scope: { type: 'user', value: email } }));
+    await gfetch(`${CAL_API}/calendars/${encodeURIComponent(ownId)}/acl?sendNotifications=false`, jsonOpts('POST', { role: 'writer', scope: { type: 'user', value: email } }));
     store.set(LS.pmail, email); openInvite(email);
   } catch (e) { toast(e.auth ? 'Vuelve a conectar con Google e inténtalo otra vez' : 'No se pudo compartir: revisa el correo e inténtalo de nuevo'); }
 }
@@ -917,7 +923,7 @@ function inviteLink() {
 function openInvite(email) {
   const link = inviteLink(), text = `Te he compartido mi calendario de Turnos DJ. Abre este enlace para verlo en la app: ${link}`;
   openSheet(`<h3>${email ? `Compartido con ${esc(email)}` : 'Enlace para tu socio'}</h3>
-    <p class="ms">Envíale este enlace: al abrirlo con su cuenta en la app, verá tus turnos al momento. También le llega un correo de Google, pero con el enlace no le hace falta.</p>
+    <p class="ms">Envíale este enlace: al abrirlo con su cuenta en la app, verá tus turnos al momento. Solo en la app: en su Google Calendar no le salen (allí solo tendrá los de Two Generation's).</p>
     <div class="mact" style="flex-wrap:wrap"><a class="btn primary" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button class="btn" data-act="copyInvite">Copiar enlace</button><button class="btn" data-act="closeSheet">Hecho</button></div>`);
 }
 function copyInvite() {

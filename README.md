@@ -14,12 +14,13 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - Se actualiza sola cada minuto con la app abierta.
 - Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
 
-## Calendarios: cada uno el suyo, y los dos ven los turnos de los dos
+## Calendarios: cada uno el suyo; en la app se ven los de los dos
 - Cada cuenta de Google tiene su **propio calendario «turnos_dj»**. Al iniciar sesión la app lo busca; si no existe, renombra el antiguo «Nexora» de esa cuenta o **crea uno nuevo** (lo verás en Google Calendar).
 - La primera vez la app pregunta **«¿De quién es esta cuenta?»** (CLEMENT o DJ BOTA). Si tu socio ya lo eligió, se deduce sola. Se puede cambiar en *Ajustes*.
 - **Cada turno se guarda en el calendario de su DJ**: los de CLEMENT en el de CLEMENT y los de DJ BOTA en el de DJ BOTA, los apunte quien los apunte. Los de **Two Generation's se copian en los dos** (añadirlos, cambiarlos o borrarlos en uno se refleja en el otro, también desde Google Calendar).
-- **Los dos veis los turnos de los dos**: en el panel de tu socio salen los turnos de su calendario en cuanto él inicie sesión en la app y te lo comparta. Si solo te deja verlo, sus turnos salen como «Solo ver».
-- **Compartir desde la app**: *Ajustes → Compartir con tu socio* → escribe su correo → *Compartir* → *Enviar por WhatsApp*. Cuando tu socio abre ese enlace con su cuenta en la app, tu calendario se añade al momento (no hace falta el correo de Google) y la app le ofrece compartirte el suyo con un toque.
+- **En la app veis los turnos de los dos**: en el panel de tu socio salen los turnos de su calendario en cuanto te lo comparta. Si solo te deja verlo, salen como «Solo ver».
+- **En Google Calendar, cada uno solo tiene lo suyo**: tus turnos y los de Two Generation's. El calendario de tu socio queda oculto en tu Google Calendar (la app lo lee, pero no te llena el calendario con sus turnos).
+- **Compartir desde la app**: *Ajustes → Compartir con tu socio* → escribe su correo → *Compartir* → *Enviar por WhatsApp*. Cuando tu socio abre ese enlace con su cuenta en la app, ve tus turnos al momento (no se envía ningún correo de Google) y la app le ofrece compartirte el suyo con un toque.
 - **Hasta que no se comparte, cada uno solo ve lo de su calendario**: los turnos de Two Generation's que estén en el calendario del otro no salen hasta abrir su enlace. La app avisa con un recuadro «Conecta con el calendario de…».
 - Si en tu calendario quedaron turnos de tu socio (de cuando había un solo calendario), *Ajustes* ofrece **pasarlos al suyo**.
 
