@@ -66,6 +66,15 @@
         <div class="f"><label for="f_date">Fecha</label><input id="f_date" type="date" required></div>
         <div class="f"><label for="f_cache">Caché (€)</label><input id="f_cache" type="number" min="0" step="any" inputmode="decimal" required placeholder="200"></div>
       </div>
+      <!-- Reparto del caché en los turnos de Two Generation's -->
+      <div class="split" id="splitBox" hidden>
+        <p class="split-h">Reparto del caché</p>
+        <div class="r2">
+          <div class="f"><label for="f_pc">Cuánto se lleva CLEMENT (€)</label><input id="f_pc" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+          <div class="f"><label for="f_pb">Cuánto se lleva DJ BOTA (€)</label><input id="f_pb" type="number" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+        </div>
+        <p class="split-sum" id="splitSum"></p>
+      </div>
       <div class="r2">
         <div class="f"><label for="f_start">Empieza</label><input id="f_start" type="time" required></div>
         <div class="f"><label for="f_end">Termina</label><input id="f_end" type="time" required></div>

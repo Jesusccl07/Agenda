@@ -12,7 +12,7 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - Próximo turno con cuenta atrás en directo, próximos 7 días, gráfico de ingresos por mes (cobrado y previsto), tabla de turnos con buscador, calendario con alta rápida («DJ LA CLUB»: viernes 80 €, sábado 100 €), ranking de locales que más pagan y objetivo del mes.
 - Añadir, modificar y borrar turnos desde la app: se guardan en Google Calendar. Sin internet se guardan en el móvil y se envían al reconectar.
 - Se actualiza sola cada minuto con la app abierta.
-- Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
+- Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / (💸 Parte …) / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
 
 ## Calendarios: cada uno el suyo; en la app se ven los de los dos
 - Cada cuenta de Google tiene su **propio calendario «turnos_dj»**. Al iniciar sesión la app lo busca; si no existe, renombra el antiguo «Nexora» de esa cuenta o **crea uno nuevo** (lo verás en Google Calendar).
@@ -23,6 +23,12 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - **Compartir desde la app**: *Ajustes → Compartir con tu socio* → escribe su correo → *Compartir* → *Enviar por WhatsApp*. Cuando tu socio abre ese enlace con su cuenta en la app, ve tus turnos al momento (no se envía ningún correo de Google) y la app le ofrece compartirte el suyo con un toque.
 - **Hasta que no se comparte, cada uno solo ve lo de su calendario**: los turnos de Two Generation's que estén en el calendario del otro no salen hasta abrir su enlace. La app avisa con un recuadro «Conecta con el calendario de…».
 - Si en tu calendario quedaron turnos de tu socio (de cuando había un solo calendario), *Ajustes* ofrece **pasarlos al suyo**.
+
+## Caché de Two Generation's: cada uno su parte
+- En los turnos de Two Generation's, debajo del caché sale **«Cuánto se lleva CLEMENT»** y **«Cuánto se lleva DJ BOTA»**. Al escribir lo de uno, lo del otro se completa solo con lo que falta (se puede cambiar).
+- En las listas se ve el **caché total** con el reparto debajo, pero en **Ingresos, el gráfico, el objetivo, los locales y el caché medio** a cada uno solo se le suma **su parte**.
+- Si aún no sabéis el reparto se puede dejar vacío: sale «Falta el reparto» y no se suma a nadie hasta que lo pongáis. No deja guardar partes que sumen más que el caché.
+- El reparto se guarda en el evento de Google Calendar (`💸 Parte CLEMENT: … / 💸 Parte DJ BOTA: …`), así que sale igual en los dos calendarios y en las dos apps.
 
 ## Avisos en el móvil
 - Cada turno avisa **el día antes y 2 horas antes** (se puede cambiar en *Ajustes → Avisos en el móvil*: también 1 hora o 30 minutos antes).

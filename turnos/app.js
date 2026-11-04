@@ -25,6 +25,7 @@ const SCOPE_VERSION = '2';                          /* sube si cambian los permi
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
 
 const PANELS = ['Clement', 'DJ Bota'];
+const PART_NAME = { 'Clement': 'CLEMENT', 'DJ Bota': 'DJ BOTA' };
 const TWO_GEN = "Two Generation's";
 const OWNER_COLOR = { 'Clement': 'var(--clement)', 'DJ Bota': 'var(--bota)', [TWO_GEN]: 'var(--tg)' };
 /* Alta rápida «DJ LA CLUB»: viernes 80 €, sábado 100 € */
@@ -95,7 +96,7 @@ function normDJ(s) {
   return '';
 }
 function parseDesc(desc) {
-  const o = { dj: '', lugar: '', local: '', cache: 0, llevar: '', extra: [] };
+  const o = { dj: '', lugar: '', local: '', cache: 0, llevar: '', extra: [], parts: {} };
   const take = (line, re) => { const m = line.match(re); return m ? m[1].trim() : null; };
   for (const raw of stripHtml(desc).split(/\r?\n/)) {
     const line = raw.trim(); let v;
@@ -103,6 +104,10 @@ function parseDesc(desc) {
     else if ((v = take(line, /^📍[️\s]*Lugar\s*:\s*(.*)$/i)) !== null) o.lugar = v;
     else if ((v = take(line, /^🏢[️\s]*Local\s*:\s*(.*)$/i)) !== null) o.local = v;
     else if ((v = take(line, /^💰[️\s]*Cach[eé]\s*:\s*(.*)$/i)) !== null) o.cache = parseMoney(v);
+    else if ((v = line.match(/^💸[️\s]*Parte\s+(.+?)\s*:\s*(.*)$/i))) {   /* reparto de Two Generation's */
+      const who = normDJ(v[1]), val = v[2].trim();
+      if (PANELS.includes(who) && val && val !== '-') o.parts[who] = parseMoney(val);
+    }
     else if (/^⏰[️\s]*Horario\s*:/i.test(line) || /^🕐[️\s]*Duraci[oó]n\s*:/i.test(line)) { /* se calculan solos */ }
     else if ((v = take(line, /^🎒[️\s]*Llevar\s*:\s*(.*)$/i)) !== null) o.llevar = v === '-' ? '' : v;
     else if (line) o.extra.push(line);
@@ -122,11 +127,13 @@ function fromEvent(ev) {
   let lugar = d.lugar, local = d.local;
   if ((!lugar || !local) && ev.location) { const p = ev.location.split(','); if (!local) local = p[0].trim(); if (!lugar) lugar = p.slice(1).join(',').trim() || p[0].trim(); }
   return { id: ev.id, title: ev.summary || 'Turno', dj: d.dj, lugar, local, llevar: d.llevar, cache: d.cache, extra: d.extra,
+    parts: Object.keys(d.parts).length ? d.parts : undefined,
     date, start, end, startMs, endMs, allDay, rev: 0, tg: ev.extendedProperties?.shared?.tg || '' };
 }
 function descOf(it) {
-  const lines = [`🎤 DJ: ${it.dj}`, `📍 Lugar: ${it.lugar}`, `🏢 Local: ${it.local}`, `💰 Caché: ${numStr(it.cache)}€`,
-    `⏰ Horario: ${it.start} - ${it.end}`, `🕐 Duración: ${fmtDur(it.endMs - it.startMs)}`, `🎒 Llevar: ${it.llevar || '-'}`];
+  const lines = [`🎤 DJ: ${it.dj}`, `📍 Lugar: ${it.lugar}`, `🏢 Local: ${it.local}`, `💰 Caché: ${numStr(it.cache)}€`];
+  if (it.dj === TWO_GEN && it.parts) for (const d of PANELS) if (Number.isFinite(it.parts[d])) lines.push(`💸 Parte ${PART_NAME[d]}: ${numStr(it.parts[d])}€`);
+  lines.push(`⏰ Horario: ${it.start} - ${it.end}`, `🕐 Duración: ${fmtDur(it.endMs - it.startMs)}`, `🎒 Llevar: ${it.llevar || '-'}`);
   if (it.extra && it.extra.length) lines.push('', ...it.extra);
   return lines.join('\n');
 }
@@ -160,6 +167,9 @@ const partnerWritable = () => partnerCal ? partnerCal.writer : store.get(LS.part
 const canEdit = i => i.cal !== 'p' || partnerWritable();
 /* DJ de un turno; si no lo pone, es del dueño del calendario donde está */
 const effDJ = i => KNOWN.includes(i.dj) ? i.dj : (i.cal === 'p' ? partnerDJ() : myDJ());
+/* Lo que se lleva cada DJ de un turno: el caché entero si es suyo; en Two Generation's, solo su parte (si no está puesta, nada) */
+const partOf = (i, who) => i.parts && Number.isFinite(i.parts[who]) ? i.parts[who] : null;
+const earn = (i, who = owner) => effDJ(i) === TWO_GEN ? (partOf(i, who) ?? 0) : i.cache;
 /* Un turno sale en el panel de su DJ; los de Two Generation's salen en los dos; sin DJ conocido, en los dos (con aviso) */
 const inPanel = i => { if (i.pending === 'delete') return false; const d = effDJ(i); return !d || d === TWO_GEN || d === owner; };
 const panelItems = () => items.filter(inPanel);
@@ -515,7 +525,7 @@ function urgency(days) {
 }
 function monthly(list, now) {
   const m = {};
-  for (const i of list) { const k = i.date.slice(0, 7); const x = m[k] || (m[k] = { c: 0, p: 0 }); if (i.endMs < now) x.c += i.cache; else x.p += i.cache; }
+  for (const i of list) { const k = i.date.slice(0, 7); const x = m[k] || (m[k] = { c: 0, p: 0 }); if (i.endMs < now) x.c += earn(i); else x.p += earn(i); }
   return m;
 }
 
@@ -554,6 +564,11 @@ let showAllPast = false, calMonth = null, selDay = null, animate = true;
 let period = store.get('turnos.period', 'mes'), tableTab = 'proximos', tableQ = '', tableAll = false, activeSec = 'inicio';
 const goalKey = () => 'turnos.goal.' + owner;
 
+/* Debajo del caché de un turno de Two Generation's: cuánto se lleva cada uno */
+const partsHTML = i => effDJ(i) !== TWO_GEN ? ''
+  : PANELS.some(d => partOf(i, d) !== null)
+    ? `<span class="parts">${PANELS.map(d => `<span class="pp">${DISPLAY[d]} ${partOf(i, d) === null ? '—' : euro(partOf(i, d))}</span>`).join(' · ')}</span>`
+    : `<span class="parts miss">Falta el reparto</span>`;
 /* Botones de modificar / borrar (los turnos del socio solo se pueden ver si no te deja editar su calendario) */
 const RO_MSG = 'Este turno está en el calendario de tu socio y solo te ha dado permiso para verlo.';
 const actionsHTML = i => canEdit(i)
@@ -597,7 +612,7 @@ function kpisHTML(list, now) {
   const curK = todayStr().slice(0, 7), curY = curK.slice(0, 4);
   const inP = period === 'mes' ? i => i.date.startsWith(curK) : period === 'año' ? i => i.date.startsWith(curY) : () => true;
   const inPrev = period === 'mes' ? i => i.date.startsWith(addMonths(curK, -1)) : period === 'año' ? i => i.date.startsWith(String(curY - 1)) : null;
-  const agg = f => { const l = list.filter(f), money = l.reduce((s, i) => s + i.cache, 0), h = l.reduce((s, i) => s + hoursOf(i), 0); return { n: l.length, money, h, avg: l.length ? money / l.length : 0 }; };
+  const agg = f => { const l = list.filter(f), money = l.reduce((s, i) => s + earn(i), 0), h = l.reduce((s, i) => s + hoursOf(i), 0); return { n: l.length, money, h, avg: l.length ? money / l.length : 0 }; };
   const a = agg(inP), b = inPrev ? agg(inPrev) : null;
   const months = Array.from({ length: 8 }, (_, k) => addMonths(curK, k - 6)), per = months.map(k => agg(i => i.date.startsWith(k)));
   const prevName = period === 'mes' ? 'el mes pasado' : 'el año pasado';
@@ -607,12 +622,12 @@ function kpisHTML(list, now) {
     const pc = Math.round((v - p) / p * 100);
     return `<span class="delta ${pc >= 0 ? 'up' : 'down'}" title="Frente a ${prevName}">${pc >= 0 ? '▲' : '▼'} ${Math.abs(pc)}%</span>`;
   };
-  const card = (label, icon, color, val, fmt, d, series) => `<div class="glass lift kpi" style="--kc:${color}">
+  const card = (label, icon, color, val, fmt, d, series, tip = '') => `<div class="glass lift kpi" style="--kc:${color}"${tip ? ` title="${esc(tip)}"` : ''}>
     <div class="kpi-h"><span class="kpi-ic">${ICON[icon]}</span>${label}</div>
     <div class="kpi-v" data-count="${val}" data-fmt="${fmt}">${fmt === 'euro' ? euro(val) : fmt === 'h' ? Math.round(val) + 'h' : val}</div>
     <div class="kpi-f">${d}${sparkSVG(series)}</div></div>`;
   return `<div class="kpis">
-    ${card('Ingresos', 'euro', 'var(--money)', a.money, 'euro', delta(a.money, b?.money), per.map(x => x.money))}
+    ${card('Ingresos', 'euro', 'var(--money)', a.money, 'euro', delta(a.money, b?.money), per.map(x => x.money), `En Two Generation's cuenta solo la parte de ${DISPLAY[owner]}`)}
     ${card('Turnos', 'disc', 'var(--accent)', a.n, 'int', delta(a.n, b?.n), per.map(x => x.n))}
     ${card('Horas en cabina', 'clock', '#B18CFF', a.h, 'h', delta(a.h, b?.h), per.map(x => x.h))}
     ${card('Caché medio', 'avg', 'var(--ok)', a.avg, 'euro', delta(a.avg, b?.avg), per.map(x => x.avg))}</div>`;
@@ -631,17 +646,17 @@ function passHTML(n, today, now) {
         ${n.dj === TWO_GEN ? `<div><dt>Con</dt><dd style="color:var(--tg)">Two Generation's</dd></div>` : ''}</dl>
     </div>
     <div class="pass-stub"><div id="cdBox" data-start="${n.startMs}" data-end="${n.endMs}">${countdownHTML(n.startMs, n.endMs)}</div>
-      <div class="pass-cache"><span>Caché</span><b>${euro(n.cache)}</b></div></div>
+      <div class="pass-cache"><span>Caché</span><b>${euro(n.cache)}</b>${partsHTML(n)}</div></div>
     <i class="foil" aria-hidden="true"></i></section>`;
 }
 function weekHTML(up, today) {
   const lim = addDays(today, 7), l = up.filter(i => i.date <= lim);
-  return `<section class="glass panel"><div class="ph"><div><h3>Próximos 7 días</h3><p>${l.length ? plural(l.length, 'turno', 'turnos') + ' · ' + euro(l.reduce((s, i) => s + i.cache, 0)) : 'Semana libre'}</p></div></div>
+  return `<section class="glass panel"><div class="ph"><div><h3>Próximos 7 días</h3><p>${l.length ? plural(l.length, 'turno', 'turnos') + ' · ' + euro(l.reduce((s, i) => s + earn(i), 0)) : 'Semana libre'}</p></div></div>
     <div class="week">${l.length ? l.map(i => { const ed = canEdit(i), tag = ed ? 'button' : 'div';
       return `<${tag} class="wk" style="--dc:${djColor(effDJ(i))}"${ed ? ` data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}"` : ''}>
       <div class="wd"><b>${+i.date.slice(8)}</b><span>${DOW_S[dowOf(i.date)]}</span></div>
       <div class="wt"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div>
-      <div class="wc">${euro(i.cache)}</div></${tag}>`; }).join('') : `<div class="tbl-empty">Nada en los próximos 7 días.</div>`}</div></section>`;
+      <div class="wc">${euro(i.cache)}${effDJ(i) === TWO_GEN ? `<small class="${partOf(i, owner) === null ? 'miss' : ''}">${DISPLAY[owner]} ${partOf(i, owner) === null ? '—' : euro(partOf(i, owner))}</small>` : ''}</div></${tag}>`; }).join('') : `<div class="tbl-empty">Nada en los próximos 7 días.</div>`}</div></section>`;
 }
 function chartHTML(list, now) {
   const curK = todayStr().slice(0, 7), mm = monthly(list, now);
@@ -664,12 +679,12 @@ function tableRows(list, now) {
     <td class="c-d"><div class="t-date"><b>${+i.date.slice(8)}</b><span>${DOW_S[dowOf(i.date)]}<br>${MON_S[+i.date.slice(5, 7) - 1]} ${i.date.slice(2, 4)}</span></div></td>
     <td class="c-n"><div class="t-name"><b>${esc(i.title)}</b><span>${where(i)}</span></div></td>
     <td class="c-h">${i.allDay ? 'Todo el día' : `${i.start}–${i.end}<br><span style="color:var(--text3);font-size:12.5px">${fmtDur(i.endMs - i.startMs)}</span>`}</td>
-    <td class="c-c"><span class="t-cache">${euro(i.cache)}</span></td>
+    <td class="c-c"><span class="t-cache">${euro(i.cache)}</span>${partsHTML(i)}</td>
     <td class="c-s"><span class="st" style="--sc:${s.c}">${s.t}</span>${i.dj === TWO_GEN ? ` <span class="st" style="--sc:var(--tg)">Two Gen</span>` : ''}</td>
     <td class="c-a">${actionsHTML(i)}</td></tr>`; }).join('');
   return { html: l.length ? `<table class="tbl"><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Caché</th><th>Estado</th><th><span class="hidden">Acciones</span></th></tr></thead><tbody>${rows}</tbody></table>`
       : `<div class="tbl-empty">${q ? `Ningún turno coincide con «${esc(tableQ)}».` : tableTab === 'proximos' ? 'No hay turnos próximos. Pulsa + para añadir uno.' : 'Todavía no hay turnos aquí.'}</div>`,
-    foot: l.length ? `<span>${plural(l.length, 'turno', 'turnos')} · ${euro(l.reduce((s, i) => s + i.cache, 0))}</span>${l.length > 8 ? `<button class="btn small" data-act="tblMore">${tableAll ? 'Ver menos' : `Ver los ${l.length}`}</button>` : ''}` : '' };
+    foot: l.length ? `<span>${plural(l.length, 'turno', 'turnos')} · ${euro(l.reduce((s, i) => s + earn(i), 0))} para ${DISPLAY[owner]}</span>${l.length > 8 ? `<button class="btn small" data-act="tblMore">${tableAll ? 'Ver menos' : `Ver los ${l.length}`}</button>` : ''}` : '' };
 }
 function tableHTML(list, now) {
   const r = tableRows(list, now), tabs = [['proximos', 'Próximos'], ['pasados', 'Pasados'], ['todos', 'Todos']];
@@ -691,7 +706,7 @@ function calendarHTML(list) {
   if (selDay) {
     const ev = (byDay[selDay] || []).sort(byStart), dw = dowOf(selDay);
     detail = `<div class="detail"><h4>${cap(dateLabel(selDay))}</h4>
-      ${ev.map(i => `<div class="drow" style="--dc:${djColor(effDJ(i))}"><div class="t-name"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div><span class="t-cache" style="font-size:20px">${euro(i.cache)}</span>
+      ${ev.map(i => `<div class="drow" style="--dc:${djColor(effDJ(i))}"><div class="t-name"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div><span class="t-cache" style="font-size:20px">${euro(i.cache)}${partsHTML(i)}</span>
         ${actionsHTML(i)}</div>`).join('') || `<div class="tbl-empty" style="padding:8px 0 4px;text-align:left">Sin turnos este día.</div>`}
       <div class="quick">${LACLUB.cache[dw] ? `<button class="btn small primary" data-act="quick" data-d="${selDay}">${ICON.bolt}Añadir ${LACLUB.title} (${LACLUB.cache[dw]}€)</button>` : ''}<button class="btn small" data-act="add" data-d="${selDay}">${ICON.plus}Turno a mano</button></div></div>`;
   }
@@ -700,7 +715,7 @@ function calendarHTML(list) {
 }
 function venuesHTML(list) {
   const m = {};
-  for (const i of list) { const k = (i.local || i.lugar || 'Sin local').trim(), x = m[k] || (m[k] = { n: 0, money: 0, lugar: i.lugar }); x.n++; x.money += i.cache; }
+  for (const i of list) { const k = (i.local || i.lugar || 'Sin local').trim(), x = m[k] || (m[k] = { n: 0, money: 0, lugar: i.lugar }); x.n++; x.money += earn(i); }
   const top = Object.entries(m).sort((a, b) => b[1].money - a[1].money).slice(0, 5), max = top[0]?.[1].money || 1;
   return `<section class="glass panel"><div class="ph"><div><h3>Locales que más pagan</h3><p>Ingresos totales por sala</p></div></div>
     ${top.length ? `<div class="rank">${top.map(([k, x], n) => `<div class="rk"><span class="pos">${n + 1}</span><div style="min-width:0"><div class="nm">${esc(k)}</div><div class="sub">${plural(x.n, 'turno', 'turnos')}${x.lugar && x.lugar !== k ? ' · ' + esc(x.lugar) : ''}</div></div><span class="val">${euro(x.money)}</span>
@@ -826,6 +841,8 @@ function openForm(it, presetDate) {
   $('#f_title').value = it ? it.title : ''; $('#f_lugar').value = it ? it.lugar : ''; $('#f_local').value = it ? it.local : '';
   $('#f_date').value = it ? it.date : (presetDate || todayStr()); $('#f_cache').value = it ? numStr(it.cache) : '';
   $('#f_start').value = it && !it.allDay ? it.start : ''; $('#f_end').value = it && !it.allDay ? it.end : ''; $('#f_llevar').value = it ? it.llevar : '';
+  $('#f_pc').value = it && partOf(it, 'Clement') !== null ? numStr(it.parts.Clement) : ''; $('#f_pb').value = it && partOf(it, 'DJ Bota') !== null ? numStr(it.parts['DJ Bota']) : '';
+  delete $('#f_pc').dataset.auto; delete $('#f_pb').dataset.auto; toggleSplit();
   $('#ferr').classList.remove('show'); $('#modal').classList.add('show'); $('#modal').setAttribute('aria-hidden', 'false'); setTimeout(() => $('#f_title').focus({ preventScroll: true }), 80);
 }
 function openQuick(date) {
@@ -839,12 +856,21 @@ function submitForm(ev) {
   const v = id => $('#' + id).value.trim(), err = $('#ferr');
   const date = v('f_date'), start = v('f_start'), end = v('f_end'), cache = parseFloat(String(v('f_cache')).replace(',', '.'));
   if (!v('f_title') || !v('f_lugar') || !v('f_local') || !date || !start || !end || !isFinite(cache) || cache < 0) { err.textContent = 'Rellena todos los campos obligatorios.'; err.classList.add('show'); return; }
+  /* Reparto de Two Generation's: opcional (si no lo sabéis aún, no se suma a nadie) y sin pasarse del caché */
+  let parts;
+  if (v('f_dj') === TWO_GEN) {
+    const num = id => v(id) === '' ? null : parseFloat(v(id).replace(',', '.')), pc = num('f_pc'), pb = num('f_pb');
+    if ([pc, pb].some(x => x !== null && (!isFinite(x) || x < 0))) { err.textContent = 'Revisa lo que se lleva cada uno: tiene que ser una cantidad en euros.'; err.classList.add('show'); return; }
+    if ((pc || 0) + (pb || 0) > cache + 0.004) { err.textContent = `Las partes suman ${euro((pc || 0) + (pb || 0))}: más que el caché (${euro(cache)}).`; err.classList.add('show'); return; }
+    if (pc !== null || pb !== null) { parts = {}; if (pc !== null) parts.Clement = pc; if (pb !== null) parts['DJ Bota'] = pb; }
+  }
   const endDate = end <= start ? addDays(date, 1) : date;
   const base = editingId ? items.find(x => x.id === editingId) : null;
-  const it = { id: base ? base.id : 'tmp_' + uid(), cal: base?.cal, tg: base?.tg || '', title: v('f_title'), dj: v('f_dj'), lugar: v('f_lugar'), local: v('f_local'), llevar: v('f_llevar'), cache,
+  const it = { id: base ? base.id : 'tmp_' + uid(), cal: base?.cal, tg: base?.tg || '', title: v('f_title'), dj: v('f_dj'), lugar: v('f_lugar'), local: v('f_local'), llevar: v('f_llevar'), cache, parts,
     extra: base ? base.extra || [] : [], date, start, end, startMs: zonedToMs(date, start), endMs: zonedToMs(endDate, end), allDay: false,
     rev: (base?.rev || 0) + 1, pending: base ? (base.pending === 'create' || String(base.id).startsWith('tmp_') ? 'create' : 'update') : 'create' };
   if (!it.cal) delete it.cal;
+  if (!it.parts) delete it.parts;
   if (base) items[items.indexOf(base)] = it; else items.push(it);
   const toPartner = isConnected() && it.dj === partnerDJ() && it.dj !== myDJ();
   closeModal(); markDirty(); render();
@@ -987,7 +1013,11 @@ async function setWho(dj) {
 
 /* ───────────── eventos de la interfaz ───────────── */
 /* Cambio de agenda con transición suave donde el navegador lo permite */
-function transition(fn) { if (document.startViewTransition && !reduceMotion()) document.startViewTransition(fn); else fn(); }
+function transition(fn) {
+  if (!document.startViewTransition || reduceMotion()) { fn(); return; }
+  const t = document.startViewTransition(fn);                 /* si se cambia muy rápido, la anterior se salta sin dar error */
+  [t.ready, t.finished, t.updateCallbackDone].forEach(pr => pr?.catch(() => {}));
+}
 function chooseOwner(o) {
   owner = o; selDay = null; tableQ = ''; tableAll = false; tableTab = 'proximos'; activeSec = 'inicio'; animate = true; calMonth = todayStr().slice(0, 7) + '-01';
   transition(() => { $('#selector').classList.add('hidden'); $('#dock').classList.remove('hidden'); render(); window.scrollTo(0, 0); });
@@ -1029,6 +1059,33 @@ document.addEventListener('click', e => {
   }
 });
 $('#form').addEventListener('submit', submitForm);
+/* Reparto: se ve solo en Two Generation's; al escribir lo de uno, lo del otro se completa con lo que falta (si no lo has tocado) */
+const parseNum = s => parseFloat(String(s).replace(',', '.'));
+function toggleSplit() { $('#splitBox').hidden = $('#f_dj').value !== TWO_GEN; updateSplitSum(); }
+function updateSplitSum() {
+  const tot = parseNum($('#f_cache').value), a = $('#f_pc').value === '' ? null : parseNum($('#f_pc').value), b = $('#f_pb').value === '' ? null : parseNum($('#f_pb').value), el = $('#splitSum');
+  el.classList.remove('bad');
+  if (a === null && b === null) { el.textContent = 'Si aún no sabéis el reparto, déjalo vacío: no se sumará a nadie hasta que lo pongas.'; return; }
+  const s = (a || 0) + (b || 0);
+  if (!isFinite(tot)) el.textContent = `Suman ${euro(s)}.`;
+  else if (s > tot + 0.004) { el.textContent = `Suman ${euro(s)}: ${euro(s - tot)} más que el caché.`; el.classList.add('bad'); }
+  else if (s < tot - 0.004) el.textContent = `Suman ${euro(s)} de ${euro(tot)}: quedan ${euro(tot - s)} sin repartir.`;
+  else el.textContent = `Suman ${euro(s)}: el caché completo.`;
+}
+function autoSplit(src) {
+  const other = src.id === 'f_pc' ? $('#f_pb') : $('#f_pc'), tot = parseNum($('#f_cache').value);
+  delete src.dataset.auto;
+  if ((other.value === '' || other.dataset.auto) && isFinite(tot) && src.value !== '' && isFinite(parseNum(src.value))) { other.value = numStr(Math.max(0, tot - parseNum(src.value))); other.dataset.auto = '1'; }
+  updateSplitSum();
+}
+$('#f_dj').addEventListener('change', toggleSplit);
+$('#f_pc').addEventListener('input', e => autoSplit(e.target));
+$('#f_pb').addEventListener('input', e => autoSplit(e.target));
+$('#f_cache').addEventListener('input', () => {
+  const auto = $('#f_pc').dataset.auto ? $('#f_pc') : $('#f_pb').dataset.auto ? $('#f_pb') : null;
+  if (auto) { const src = auto.id === 'f_pc' ? $('#f_pb') : $('#f_pc'), tot = parseNum($('#f_cache').value); if (src.value !== '' && isFinite(tot)) auto.value = numStr(Math.max(0, tot - parseNum(src.value))); }
+  updateSplitSum();
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeSheet(); } });
 
 /* ───────────── arranque ───────────── */
