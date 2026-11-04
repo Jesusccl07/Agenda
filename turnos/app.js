@@ -1,12 +1,12 @@
 'use strict';
 /* ════════════════════════════════════════════════════════════════════════
    Turnos DJ — PWA de turnos sincronizada con Google Calendar (calendario «Nexora»)
-   · Mismo inicio de sesión de Google que la app de Exámenes (mismo Client ID).
+   · Inicio de sesión con Google (Client ID propio de la web en jesusccl07.github.io).
    · Google Calendar es la fuente de verdad; en el móvil se guarda una copia para
      verla sin conexión y los cambios hechos offline se envían al volver internet.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* El Client ID de Google no es secreto (es el mismo de la app de Exámenes) */
+/* El Client ID de Google no es secreto */
 const GOOGLE_CLIENT_ID = '909664836499-v9ui1farksf9q6orqufl9ss055aqmfdq.apps.googleusercontent.com';
 const CALENDAR_NAME = 'Nexora';
 const TZ = 'Europe/Madrid';
@@ -286,7 +286,7 @@ function setSync(s) {
   syncState = s;
   $$('[data-sync]').forEach(el => { el.dataset.s = s; const t = $('.txt', el); if (t) t.textContent = SYNC_TEXT[s]; });
 }
-const syncPill = () => `<button class="pill btn" data-act="sync" data-sync data-s="${syncState}"><i class="dot"></i><span class="txt">${SYNC_TEXT[syncState]}</span></button>`;
+const syncPill = () => `<button class="sync" data-act="sync" data-sync data-s="${syncState}" aria-label="Estado de Google Calendar">${EQ}<span class="txt">${SYNC_TEXT[syncState]}</span></button>`;
 
 /* ───────────── estadísticas ───────────── */
 function urgency(days) {
@@ -302,107 +302,308 @@ function monthly(list, now) {
 }
 
 /* ───────────── vistas ───────────── */
-const OWNER_CLASS = { 'Clement': 'clement', 'DJ Bota': 'bota' };
-function turnoCard(i, o = {}) {
-  const tg = i.dj === TWO_GEN, free = !i.dj || !KNOWN.includes(i.dj);
-  return `<div class="turno${o.past ? ' past' : ''}${o.sm ? ' sm' : ''}">
-    <div class="l"><div class="date"><div class="w">${DOW_S[dowOf(i.date)]}</div><div class="d">${+i.date.slice(8)}</div><div class="m">${MON_S[+i.date.slice(5, 7) - 1]}</div></div>
-    <div style="min-width:0"><h4>${esc(i.title)}</h4>
-      <div class="where">${esc(i.local)}${i.local && i.lugar ? ' · ' : ''}${esc(i.lugar)}</div>
-      <div class="chips"><span class="chip">${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`}</span>${i.allDay ? '' : `<span class="chip">${fmtDur(i.endMs - i.startMs)}</span>`}
-        <span class="chip cache">${euro(i.cache)}</span>${i.llevar ? `<span class="chip">🎒 ${esc(i.llevar)}</span>` : ''}
-        ${tg ? `<span class="chip tg">🤝 Two Generation's</span>` : ''}${free ? `<span class="chip warn">❓ Sin asignar · edítalo para elegir DJ</span>` : ''}
-        ${i.pending ? `<span class="chip wait">⏳ Pendiente de sincronizar</span>` : ''}</div></div></div>
-    <div class="act"><button class="btn icon" data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar turno">✏️</button><button class="btn icon danger" data-act="del" data-id="${esc(i.id)}" aria-label="Eliminar turno">🗑️</button></div></div>`;
-}
+const DISPLAY = { 'Clement': 'CLEMENT', 'DJ Bota': 'DJ BOTA', [TWO_GEN]: "Two Generation's" };
+const ICON = {
+  edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg>',
+  del: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  swap: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 16-3-3 3-3M4 13h13M17 8l3 3-3 3"/></svg>',
+  left: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
+  right: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
+  bolt: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7v8a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg>',
+  list: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
+  cal: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  disc: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  euro: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6.5A7 7 0 1 0 18 17.5M4 10h10M4 14h10"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  avg: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8M15 7h6v6"/></svg>',
+  search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-12a7 7 0 1 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
+};
+const EQ = '<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>';
+const djColor = dj => OWNER_COLOR[dj] || 'rgba(236,232,255,.5)';
+const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
+const cap = s => s.replace(/^./, c => c.toUpperCase());
+const addMonths = (k, n) => { const [y, m] = k.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1)); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`; };
+const where = i => `${esc(i.local)}${i.local && i.lugar ? ', ' : ''}${esc(i.lugar)}`;
+const hoursOf = i => Math.max(0, i.endMs - i.startMs) / 36e5;
+const SECTIONS = [['inicio', 'Inicio', 'home'], ['turnos', 'Turnos', 'list'], ['calendario', 'Calendario', 'cal'], ['ingresos', 'Ingresos', 'chart']];
+
 let showAllPast = false, calMonth = null, selDay = null, animate = true;
-function viewPanel() {
-  const list = panelItems(), now = Date.now(), today = todayStr();
-  const up = list.filter(i => i.endMs >= now).sort(byStart), past = list.filter(i => i.endMs < now).sort((a, b) => b.startMs - a.startMs);
-  const cobrado = past.reduce((s, i) => s + i.cache, 0), pend = up.reduce((s, i) => s + i.cache, 0), total = cobrado + pend;
-  const hours = list.reduce((s, i) => s + Math.max(0, i.endMs - i.startMs), 0) / 36e5;
-  const mm = monthly(list, now), keys = Object.keys(mm).sort(), curK = today.slice(0, 7), max = Math.max(1, ...keys.map(k => mm[k].c + mm[k].p)), cm = mm[curK] || { c: 0, p: 0 };
-  let hero;
-  if (up.length) {
-    const n = up[0], live = n.startMs <= now, u = live ? { t: 'En curso ahora', c: 'var(--ok)' } : urgency(dayDiff(today, n.date));
-    hero = `<div class="hero"><div class="eyebrow">PRÓXIMO TURNO · <span style="color:${u.c}">${u.t}</span></div><h2>${esc(n.title)} — ${esc(n.lugar || n.local)}</h2>
-      <div class="meta"><span>${dateLabel(n.date)}</span><span><b>${n.allDay ? 'Todo el día' : `${n.start}–${n.end}`}</b></span><span>${esc(n.local)}</span><span class="chip cache">${euro(n.cache)}</span>${n.llevar ? `<span>Llevar: ${esc(n.llevar)}</span>` : ''}${n.dj === TWO_GEN ? `<span style="color:var(--tg)">🤝 Two Generation's</span>` : ''}</div></div>`;
-  } else hero = `<div class="hero empty">No hay turnos próximos en este panel.</div>`;
-  const pastShown = showAllPast ? past : past.slice(0, 8);
-  return `<div class="head"><div class="ttl"><div class="badge ${OWNER_CLASS[owner]}"><img src="img/${OWNER_CLASS[owner]}.png" alt=""></div><div><h1>${esc(owner.toUpperCase())}</h1><div class="sub">Calendario Nexora · cachés, horarios y logística</div></div></div>
-      <div class="tools"><button class="pill btn" data-act="switch">Cambiar panel</button>${syncPill()}<button class="pill btn" data-act="settings" aria-label="Ajustes">⚙️</button></div></div>
-    ${!isConnected() ? `<div class="connect"><div><b>Conecta tu Google Calendar</b><span>Inicia sesión para ver y editar tus turnos del calendario Nexora.</span></div><button class="btn primary" data-act="connect">Iniciar sesión con Google</button></div>` : ''}
-    <div class="stats">
-      <div class="stat"><div class="l">Turnos totales</div><div class="v">${list.length}</div></div>
-      <div class="stat"><div class="l">Próximos</div><div class="v">${up.length}</div></div>
-      <div class="stat money"><div class="l">Caché pendiente</div><div class="v">${euro(pend)}</div></div>
-      <div class="stat money"><div class="l">Caché cobrado</div><div class="v">${euro(cobrado)}</div></div>
-      <div class="stat"><div class="l">Horas totales</div><div class="v">${Math.round(hours)}h</div></div>
-      <div class="stat money"><div class="l">Caché medio/turno</div><div class="v">${euro(list.length ? total / list.length : 0)}</div></div></div>
-    ${hero}
-    <div class="sec"><h3>Próximos turnos</h3><span class="n">${up.length ? up.length + (up.length > 1 ? ' turnos' : ' turno') : ''}</span></div>
-    ${up.length ? up.map(i => turnoCard(i)).join('') : `<div class="empty-box">No hay turnos programados. Pulsa «Añadir turno» o usa el calendario de abajo.</div>`}
-    <div class="sec"><h3>Turnos pasados</h3><span class="n">${past.length ? past.length + (past.length > 1 ? ' turnos' : ' turno') : ''}</span></div>
-    ${past.length ? pastShown.map(i => turnoCard(i, { past: true })).join('') + (past.length > 8 ? `<button class="btn block" style="width:100%" data-act="morePast">${showAllPast ? 'Ver menos' : `Ver los ${past.length} turnos pasados`}</button>` : '') : `<div class="empty-box">Todavía no hay turnos pasados.</div>`}
-    <div class="sec"><h3>Ingresos por mes</h3><span class="n"></span></div>
-    <div class="card">${keys.length ? `<div class="thism"><div><span>${MON_L[+curK.slice(5) - 1]} (este mes)</span><br><b>${euro(cm.c + cm.p)}</b></div><span>Cobrado ${euro(cm.c)} · Previsto ${euro(cm.p)}</span></div>
-      <div class="legend"><span><i style="background:var(--ok)"></i>Cobrado (turnos pasados)</span><span><i style="background:var(--money)"></i>Previsto (turnos próximos)</span></div>
-      ${keys.map(k => { const x = mm[k]; return `<div class="mrow${k === curK ? ' cur' : ''}"><div class="ml">${MON_L[+k.slice(5) - 1]} ${k.slice(0, 4)}</div><div class="bar"><i class="c" style="width:${x.c / max * 100}%"></i><i class="p" style="width:${x.p / max * 100}%"></i></div><div class="mt">${euro(x.c + x.p)}</div></div>`; }).join('')}`
-      : `<div class="empty-box" style="border:0">Aún no hay datos para calcular ingresos por mes.</div>`}</div>
-    <div class="sec"><h3>Calendario</h3><span class="n"></span></div>
-    <div class="card">${calendarHTML(list)}</div>`;
+let period = store.get('turnos.period', 'mes'), tableTab = 'proximos', tableQ = '', tableAll = false, activeSec = 'inicio';
+const goalKey = () => 'turnos.goal.' + owner;
+
+/* Estado de un turno para la tabla */
+function statusOf(i, now) {
+  if (i.pending) return { t: 'Sin sincronizar', c: 'var(--money)' };
+  if (!i.dj || !KNOWN.includes(i.dj)) return { t: 'Sin DJ', c: 'var(--danger)' };
+  if (i.startMs <= now && now < i.endMs) return { t: 'Sonando', c: 'var(--ok)' };
+  if (i.endMs < now) return { t: 'Cobrado', c: 'rgba(236,232,255,.6)' };
+  const d = dayDiff(todayStr(), i.date);
+  return d <= 0 ? { t: 'Hoy', c: 'var(--danger)' } : d === 1 ? { t: 'Mañana', c: 'var(--money)' } : { t: `En ${d} días`, c: 'var(--accent)' };
 }
+
+/* ── Cuenta atrás del próximo turno (se actualiza cada segundo sin repintar) ── */
+function countdownHTML(startMs, endMs) {
+  const now = Date.now();
+  if (startMs <= now && now < endMs) return `<div class="cd live">Sonando ahora</div>`;
+  const s = Math.max(0, Math.floor((startMs - now) / 1000)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  const u = (v, l) => `<div class="u"><b>${pad(v)}</b><span>${l}</span></div>`;
+  return `<div class="cd" role="timer" aria-label="Faltan ${d} días, ${h} horas y ${m} minutos">${d ? u(d, 'días') + u(h, 'horas') + u(m, 'min') : u(h, 'horas') + u(m, 'min') + u(sec, 'seg')}</div>`;
+}
+function tickCountdown() {
+  const el = $('#cdBox'); if (!el) return;
+  if (Date.now() >= +el.dataset.end) { render(); return; }
+  el.innerHTML = countdownHTML(+el.dataset.start, +el.dataset.end);
+}
+setInterval(() => { if (document.visibilityState === 'visible') tickCountdown(); }, 1000);
+
+/* ── Bloques del panel ── */
+function sparkSVG(vals) {
+  const max = Math.max(...vals, 1), n = vals.length;
+  const pts = vals.map((v, i) => [i / (n - 1) * 100, 30 - v / max * 26]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const gid = 'sg' + Math.random().toString(36).slice(2, 7);
+  return `<svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--kc)" stop-opacity=".35"/><stop offset="1" stop-color="var(--kc)" stop-opacity="0"/></linearGradient></defs>
+    <path class="ar" d="${d} L100 32 L0 32Z" fill="url(#${gid})"/><path class="ln" d="${d}" pathLength="1"/></svg>`;
+}
+function kpisHTML(list, now) {
+  const curK = todayStr().slice(0, 7), curY = curK.slice(0, 4);
+  const inP = period === 'mes' ? i => i.date.startsWith(curK) : period === 'año' ? i => i.date.startsWith(curY) : () => true;
+  const inPrev = period === 'mes' ? i => i.date.startsWith(addMonths(curK, -1)) : period === 'año' ? i => i.date.startsWith(String(curY - 1)) : null;
+  const agg = f => { const l = list.filter(f), money = l.reduce((s, i) => s + i.cache, 0), h = l.reduce((s, i) => s + hoursOf(i), 0); return { n: l.length, money, h, avg: l.length ? money / l.length : 0 }; };
+  const a = agg(inP), b = inPrev ? agg(inPrev) : null;
+  const months = Array.from({ length: 8 }, (_, k) => addMonths(curK, k - 6)), per = months.map(k => agg(i => i.date.startsWith(k)));
+  const prevName = period === 'mes' ? 'el mes pasado' : 'el año pasado';
+  const delta = (v, p) => {
+    if (!b) return `<span class="delta">Histórico</span>`;
+    if (!p) return v ? `<span class="delta up">Nuevo</span>` : `<span class="delta">Sin datos</span>`;
+    const pc = Math.round((v - p) / p * 100);
+    return `<span class="delta ${pc >= 0 ? 'up' : 'down'}" title="Frente a ${prevName}">${pc >= 0 ? '▲' : '▼'} ${Math.abs(pc)}%</span>`;
+  };
+  const card = (label, icon, color, val, fmt, d, series) => `<div class="glass lift kpi" style="--kc:${color}">
+    <div class="kpi-h"><span class="kpi-ic">${ICON[icon]}</span>${label}</div>
+    <div class="kpi-v" data-count="${val}" data-fmt="${fmt}">${fmt === 'euro' ? euro(val) : fmt === 'h' ? Math.round(val) + 'h' : val}</div>
+    <div class="kpi-f">${d}${sparkSVG(series)}</div></div>`;
+  return `<div class="kpis">
+    ${card('Ingresos', 'euro', 'var(--money)', a.money, 'euro', delta(a.money, b?.money), per.map(x => x.money))}
+    ${card('Turnos', 'disc', 'var(--accent)', a.n, 'int', delta(a.n, b?.n), per.map(x => x.n))}
+    ${card('Horas en cabina', 'clock', '#B18CFF', a.h, 'h', delta(a.h, b?.h), per.map(x => x.h))}
+    ${card('Caché medio', 'avg', 'var(--ok)', a.avg, 'euro', delta(a.avg, b?.avg), per.map(x => x.avg))}</div>`;
+}
+function passHTML(n, today, now) {
+  if (!n) return `<section class="glass pass empty"><div class="pass-top"><span>Próximo turno</span></div><h2>Agenda libre</h2>No hay turnos próximos en esta agenda. Añade uno con el botón + o desde el calendario.</section>`;
+  const live = n.startMs <= now, u = live ? { t: 'En curso', c: 'var(--ok)' } : urgency(dayDiff(today, n.date));
+  return `<section class="glass lift pass" style="--pc:${djColor(n.dj)}" aria-label="Próximo turno">
+    <div class="pass-main">
+      <div class="pass-top"><span>Próximo turno</span><span class="tag" style="--tc:${u.c}">${live ? EQ : ''}${u.t}</span></div>
+      <h2>${esc(n.title)}</h2>
+      <p class="pass-where">${where(n)}</p>
+      <dl class="pass-info"><div><dt>Día</dt><dd>${cap(dateLabel(n.date))}</dd></div>
+        <div><dt>Horario</dt><dd>${n.allDay ? 'Todo el día' : `${n.start}–${n.end}`}</dd></div>
+        ${n.llevar ? `<div><dt>Llevar</dt><dd>${esc(n.llevar)}</dd></div>` : ''}
+        ${n.dj === TWO_GEN ? `<div><dt>Con</dt><dd style="color:var(--tg)">Two Generation's</dd></div>` : ''}</dl>
+    </div>
+    <div class="pass-stub"><div id="cdBox" data-start="${n.startMs}" data-end="${n.endMs}">${countdownHTML(n.startMs, n.endMs)}</div>
+      <div class="pass-cache"><span>Caché</span><b>${euro(n.cache)}</b></div></div>
+    <i class="foil" aria-hidden="true"></i></section>`;
+}
+function weekHTML(up, today) {
+  const lim = addDays(today, 7), l = up.filter(i => i.date <= lim);
+  return `<section class="glass panel"><div class="ph"><div><h3>Próximos 7 días</h3><p>${l.length ? plural(l.length, 'turno', 'turnos') + ' · ' + euro(l.reduce((s, i) => s + i.cache, 0)) : 'Semana libre'}</p></div></div>
+    <div class="week">${l.length ? l.map(i => `<button class="wk" style="--dc:${djColor(i.dj)}" data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}">
+      <div class="wd"><b>${+i.date.slice(8)}</b><span>${DOW_S[dowOf(i.date)]}</span></div>
+      <div class="wt"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div>
+      <div class="wc">${euro(i.cache)}</div></button>`).join('') : `<div class="tbl-empty">Nada en los próximos 7 días.</div>`}</div></section>`;
+}
+function chartHTML(list, now) {
+  const curK = todayStr().slice(0, 7), mm = monthly(list, now);
+  const ks = Array.from({ length: 12 }, (_, k) => addMonths(curK, k - 8));
+  const max = Math.max(1, ...ks.map(k => (mm[k]?.c || 0) + (mm[k]?.p || 0)));
+  const y = curK.slice(0, 4), yTot = Object.keys(mm).filter(k => k.startsWith(y)).reduce((s, k) => s + mm[k].c + mm[k].p, 0);
+  return `<section class="glass panel anchor" id="ingresos"><div class="ph"><div><h3>Ingresos por mes</h3><p>Total ${y}: <b style="color:var(--money)">${euro(yTot)}</b></p></div>
+      <div class="legend"><span><i style="background:rgba(255,255,255,.7)"></i>Cobrado</span><span><i style="background:var(--money)"></i>Previsto</span><span><i style="background:var(--accent)"></i>Este mes</span></div></div>
+    <div class="chart" role="list">${ks.map((k, n) => { const x = mm[k] || { c: 0, p: 0 }, t = x.c + x.p, cur = k === curK;
+      return `<div class="col${cur && t ? ' cur' : ''}${cur ? ' now' : ''}" role="listitem" tabindex="0" aria-label="${MON_L[+k.slice(5) - 1]} ${k.slice(0, 4)}: ${euro(t)}">
+        <div class="trk"><div class="fill" style="height:${t ? Math.max(4, t / max * 100) : 0}%;animation-delay:${.3 + n * .05}s">${x.c ? `<i class="c" style="flex:${x.c}"></i>` : ''}${x.p ? `<i class="p" style="flex:${x.p}"></i>` : ''}</div>
+        <span class="tip">${euro(t)}</span></div><span class="ml">${MON_S[+k.slice(5) - 1]}</span></div>`; }).join('')}</div></section>`;
+}
+function tableRows(list, now) {
+  const q = normName(tableQ);
+  let l = tableTab === 'proximos' ? list.filter(i => i.endMs >= now).sort(byStart) : tableTab === 'pasados' ? list.filter(i => i.endMs < now).sort((a, b) => b.startMs - a.startMs) : [...list].sort((a, b) => b.startMs - a.startMs);
+  if (q) l = l.filter(i => normName([i.title, i.local, i.lugar, i.llevar, DISPLAY[i.dj] || ''].join(' ')).includes(q));
+  const shown = tableAll ? l : l.slice(0, 8);
+  const rows = shown.map(i => { const s = statusOf(i, now); return `<tr class="${i.endMs < now ? 'past' : ''}" style="--dc:${djColor(i.dj)}">
+    <td class="c-d"><div class="t-date"><b>${+i.date.slice(8)}</b><span>${DOW_S[dowOf(i.date)]}<br>${MON_S[+i.date.slice(5, 7) - 1]} ${i.date.slice(2, 4)}</span></div></td>
+    <td class="c-n"><div class="t-name"><b>${esc(i.title)}</b><span>${where(i)}</span></div></td>
+    <td class="c-h">${i.allDay ? 'Todo el día' : `${i.start}–${i.end}<br><span style="color:var(--text3);font-size:12.5px">${fmtDur(i.endMs - i.startMs)}</span>`}</td>
+    <td class="c-c"><span class="t-cache">${euro(i.cache)}</span></td>
+    <td class="c-s"><span class="st" style="--sc:${s.c}">${s.t}</span>${i.dj === TWO_GEN ? ` <span class="st" style="--sc:var(--tg)">Two Gen</span>` : ''}</td>
+    <td class="c-a"><div class="act"><button data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}">${ICON.edit}</button><button class="del" data-act="del" data-id="${esc(i.id)}" aria-label="Eliminar ${esc(i.title)}">${ICON.del}</button></div></td></tr>`; }).join('');
+  return { html: l.length ? `<table class="tbl"><thead><tr><th>Fecha</th><th>Turno</th><th>Horario</th><th>Caché</th><th>Estado</th><th><span class="hidden">Acciones</span></th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<div class="tbl-empty">${q ? `Ningún turno coincide con «${esc(tableQ)}».` : tableTab === 'proximos' ? 'No hay turnos próximos. Pulsa + para añadir uno.' : 'Todavía no hay turnos aquí.'}</div>`,
+    foot: l.length ? `<span>${plural(l.length, 'turno', 'turnos')} · ${euro(l.reduce((s, i) => s + i.cache, 0))}</span>${l.length > 8 ? `<button class="btn small" data-act="tblMore">${tableAll ? 'Ver menos' : `Ver los ${l.length}`}</button>` : ''}` : '' };
+}
+function tableHTML(list, now) {
+  const r = tableRows(list, now), tabs = [['proximos', 'Próximos'], ['pasados', 'Pasados'], ['todos', 'Todos']];
+  return `<section class="glass panel anchor" id="turnos"><div class="ph"><div><h3>Turnos</h3><p>Toca el lápiz para modificar o la papelera para borrar.</p></div>
+      <div class="tbar"><label class="search">${ICON.search}<input id="tblQ" type="search" placeholder="Buscar sala, pueblo…" value="${esc(tableQ)}" aria-label="Buscar turnos"></label>
+      <div class="seg sm" role="tablist">${tabs.map(([k, t]) => `<button role="tab" aria-selected="${tableTab === k}" class="${tableTab === k ? 'on' : ''}" data-act="tblTab" data-k="${k}">${t}</button>`).join('')}</div></div></div>
+    <div id="tblBody">${r.html}</div><div class="tfoot" id="tblFoot">${r.foot}</div></section>`;
+}
+function refreshTable() { const r = tableRows(panelItems(), Date.now()); $('#tblBody').innerHTML = r.html; $('#tblFoot').innerHTML = r.foot; }
 function calendarHTML(list) {
   const byDay = {}; list.forEach(i => (byDay[i.date] = byDay[i.date] || []).push(i));
   const today = todayStr(), ms = calMonth, off = (dowOf(ms) + 6) % 7, gs = addDays(ms, -off), mIdx = +ms.slice(5, 7) - 1;
   let cells = '';
   for (let k = 0; k < 42; k++) {
-    const d = addDays(gs, k), n = (byDay[d] || []).length, cls = ['day']; if (+d.slice(5, 7) - 1 !== mIdx) cls.push('out'); if (d === today) cls.push('today'); if (n) cls.push('has'); if (d === selDay) cls.push('sel');
-    cells += `<button class="${cls.join(' ')}" data-act="day" data-d="${d}" aria-label="${dateLabel(d)}${n ? ', ' + n + ' turno(s)' : ''}">${+d.slice(8)}${n ? `<span class="c">${n}</span>` : ''}</button>`;
+    const d = addDays(gs, k), ev = byDay[d] || [], n = ev.length, cls = ['day']; if (+d.slice(5, 7) - 1 !== mIdx) cls.push('out'); if (d === today) cls.push('today'); if (n) cls.push('has'); if (d === selDay) cls.push('sel');
+    cells += `<button class="${cls.join(' ')}" data-act="day" data-d="${d}" aria-pressed="${d === selDay}" aria-label="${dateLabel(d)}${n ? ', ' + plural(n, 'turno', 'turnos') : ''}">${+d.slice(8)}<span class="dots">${ev.slice(0, 3).map(i => `<i style="--dc:${djColor(i.dj)}"></i>`).join('')}</span></button>`;
   }
   let detail = '';
   if (selDay) {
     const ev = (byDay[selDay] || []).sort(byStart), dw = dowOf(selDay);
-    detail = `<div class="detail"><h4>${dateLabel(selDay).replace(/^./, c => c.toUpperCase())}</h4>
-      ${ev.length ? ev.map(i => turnoCard(i, { sm: true, past: i.endMs < Date.now() })).join('') : `<div class="empty-box">Sin turnos este día.</div>`}
-      <div class="quick">${LACLUB.cache[dw] ? `<button class="btn small primary" data-act="quick" data-d="${selDay}">⚡ Añadir «${LACLUB.title}» (${LACLUB.cache[dw]}€)</button>` : ''}<button class="btn small" data-act="add" data-d="${selDay}">+ Turno manual</button></div></div>`;
+    detail = `<div class="detail"><h4>${cap(dateLabel(selDay))}</h4>
+      ${ev.map(i => `<div class="drow" style="--dc:${djColor(i.dj)}"><div class="t-name"><b>${esc(i.title)}</b><span>${i.allDay ? 'Todo el día' : `${i.start}–${i.end}`} · ${where(i)}</span></div><span class="t-cache" style="font-size:20px">${euro(i.cache)}</span>
+        <div class="act"><button data-act="edit" data-id="${esc(i.id)}" aria-label="Modificar ${esc(i.title)}">${ICON.edit}</button><button class="del" data-act="del" data-id="${esc(i.id)}" aria-label="Eliminar ${esc(i.title)}">${ICON.del}</button></div></div>`).join('') || `<div class="tbl-empty" style="padding:8px 0 4px;text-align:left">Sin turnos este día.</div>`}
+      <div class="quick">${LACLUB.cache[dw] ? `<button class="btn small primary" data-act="quick" data-d="${selDay}">${ICON.bolt}Añadir ${LACLUB.title} (${LACLUB.cache[dw]}€)</button>` : ''}<button class="btn small" data-act="add" data-d="${selDay}">${ICON.plus}Turno a mano</button></div></div>`;
   }
-  return `<div class="cal-h"><h3>${MON_L[mIdx]} ${ms.slice(0, 4)}</h3><div class="nav"><button class="btn icon small" data-act="prev" aria-label="Mes anterior">‹</button><button class="btn icon small" data-act="next" aria-label="Mes siguiente">›</button></div></div>
-    <div class="grid">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<div class="dow">${x}</div>`).join('')}${cells}</div>${detail}`;
+  return `<section class="glass panel anchor" id="calendario"><div class="cal-h"><div class="ph" style="margin:0"><div><h3>${MON_L[mIdx]} ${ms.slice(0, 4)}</h3><p>Toca un día para ver o añadir turnos</p></div></div><div class="nav"><button class="iconbtn" data-act="prev" aria-label="Mes anterior">${ICON.left}</button><button class="iconbtn" data-act="next" aria-label="Mes siguiente">${ICON.right}</button></div></div>
+    <div class="grid">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(x => `<div class="dow">${x}</div>`).join('')}${cells}</div>${detail}</section>`;
+}
+function venuesHTML(list) {
+  const m = {};
+  for (const i of list) { const k = (i.local || i.lugar || 'Sin local').trim(), x = m[k] || (m[k] = { n: 0, money: 0, lugar: i.lugar }); x.n++; x.money += i.cache; }
+  const top = Object.entries(m).sort((a, b) => b[1].money - a[1].money).slice(0, 5), max = top[0]?.[1].money || 1;
+  return `<section class="glass panel"><div class="ph"><div><h3>Locales que más pagan</h3><p>Ingresos totales por sala</p></div></div>
+    ${top.length ? `<div class="rank">${top.map(([k, x], n) => `<div class="rk"><span class="pos">${n + 1}</span><div style="min-width:0"><div class="nm">${esc(k)}</div><div class="sub">${plural(x.n, 'turno', 'turnos')}${x.lugar && x.lugar !== k ? ' · ' + esc(x.lugar) : ''}</div></div><span class="val">${euro(x.money)}</span>
+      <div class="meter"><i style="width:${x.money / max * 100}%;animation-delay:${.5 + n * .08}s"></i></div></div>`).join('')}</div>` : `<div class="tbl-empty">Aún no hay locales.</div>`}</section>`;
+}
+function goalHTML(list, now) {
+  const curK = todayStr().slice(0, 7), mm = monthly(list, now), cm = mm[curK] || { c: 0, p: 0 }, got = cm.c + cm.p;
+  let goal = parseFloat(store.get(goalKey(), ''));
+  if (!(goal > 0)) { const prev = [1, 2, 3].map(n => mm[addMonths(curK, -n)]).filter(Boolean).map(x => x.c + x.p); goal = Math.max(100, Math.ceil((prev.length ? Math.max(...prev) : 400) / 50) * 50); }
+  const pct = Math.min(1, got / goal), left = Math.max(0, goal - got);
+  return `<section class="glass panel"><div class="ph"><div><h3>Objetivo de ${MON_L[+curK.slice(5) - 1].toLowerCase()}</h3><p>Cobrado y previsto este mes</p></div></div>
+    <div class="goal"><div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="gGoal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--money)"/></linearGradient></defs>
+      <circle class="tr" cx="60" cy="60" r="50" fill="none"/><circle class="pr" cx="60" cy="60" r="50" fill="none" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${(1 - pct).toFixed(4)}" style="${pct ? '' : 'opacity:0'}"/></svg>
+      <div class="in"><div><b>${Math.round(got / goal * 100)}%</b><span>conseguido</span></div></div></div>
+    <div class="goal-t"><b>${euro(got)}</b><p>de ${euro(goal)}${left ? `: faltan ${euro(left)}` : ': ¡objetivo cumplido!'}</p><button class="btn small" data-act="goal">Cambiar objetivo</button></div></div></section>`;
+}
+function greeting() {
+  const h = +wall(Date.now()).time.slice(0, 2);
+  return h >= 6 && h < 14 ? 'Buenos días' : h >= 14 && h < 21 ? 'Buenas tardes' : 'Buenas noches';
+}
+function viewPanel() {
+  const list = panelItems(), now = Date.now(), today = todayStr();
+  const up = list.filter(i => i.endMs >= now).sort(byStart);
+  const who = owner === 'Clement' ? `<img class="wm" src="img/clement.png" alt="CLEMENT">` : `<img class="disc" src="img/bota.png" alt=""><span class="nm">DJ BOTA</span>`;
+  const periods = [['mes', 'Este mes'], ['año', 'Este año'], ['todo', 'Todo']];
+  return `<header class="glass topbar"><button class="who" data-act="switch" aria-label="Cambiar de agenda (ahora: ${DISPLAY[owner]})">${who}<span class="sw">${ICON.swap}</span></button>
+      <nav class="tabs" aria-label="Secciones">${SECTIONS.map(([k, t, ic]) => `<button data-act="go" data-to="${k}" class="${activeSec === k ? 'on' : ''}">${ICON[ic]}${t}</button>`).join('')}</nav>
+      <div class="tools">${syncPill()}<button class="btn primary small addtop" data-act="add">${ICON.plus}Añadir turno</button><button class="iconbtn" data-act="settings" aria-label="Ajustes">${ICON.gear}</button></div></header>
+    <div class="board">
+      <div class="hello anchor o-hello" id="inicio"><div><h1>${greeting()}, ${DISPLAY[owner]}</h1><p>${cap(dateLabel(today))}. ${up.length ? `Tienes ${plural(up.length, 'turno próximo', 'turnos próximos')}.` : 'No tienes turnos próximos.'}</p></div>
+        <div class="glass seg" role="tablist" aria-label="Periodo de las cifras">${periods.map(([k, t]) => `<button role="tab" aria-selected="${period === k}" class="${period === k ? 'on' : ''}" data-act="period" data-k="${k}">${t}</button>`).join('')}</div></div>
+      ${!isConnected() ? `<div class="glass connect o-connect"><div><b>Conecta tu Google Calendar</b><span>Inicia sesión para ver y editar los turnos del calendario Nexora.</span></div><button class="btn primary" data-act="connect">Iniciar sesión con Google</button></div>` : ''}
+      <div class="o-kpis">${kpisHTML(list, now)}</div>
+      <div class="c-8 o-chart">${chartHTML(list, now)}</div>
+      <div class="c-4 o-pass">${passHTML(up[0], today, now)}</div>
+      <div class="c-7 o-table">${tableHTML(list, now)}</div>
+      <div class="c-5 o-week">${weekHTML(up, today)}</div>
+      <div class="c-5 c-half o-cal">${calendarHTML(list)}</div>
+      <div class="c-4 c-half o-venues">${venuesHTML(list)}</div>
+      <div class="c-3 c-half o-goal">${goalHTML(list, now)}</div>
+    </div>`;
+}
+const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+/* Las cifras suben desde cero la primera vez que se abre el panel */
+function countUp(root) {
+  if (reduceMotion()) return;
+  $$('[data-count]', root).forEach(el => {
+    const to = +el.dataset.count, f = el.dataset.fmt; if (!to) return;
+    const fmt = v => f === 'euro' ? euro(Math.round(v)) : f === 'h' ? Math.round(v) + 'h' : String(Math.round(v)), fin = f === 'euro' ? euro(to) : f === 'h' ? Math.round(to) + 'h' : String(to);
+    const t0 = performance.now() + 250, dur = 1300;
+    const step = t => { const p = Math.max(0, Math.min(1, (t - t0) / dur)), e = 1 - Math.pow(1 - p, 4); el.textContent = p < 1 ? fmt(to * e) : fin; if (p < 1) requestAnimationFrame(step); };
+    el.textContent = fmt(0); requestAnimationFrame(step);
+  });
+}
+function renderDock() {
+  $('#dock').innerHTML = SECTIONS.slice(0, 2).map(([k, t, ic]) => `<button data-act="go" data-to="${k}" class="${activeSec === k ? 'on' : ''}" aria-label="${t}">${ICON[ic]}<span class="lbl">${t}</span></button>`).join('')
+    + `<button class="add" data-act="add" aria-label="Añadir turno">${ICON.plus}<span class="lbl">Añadir turno</span></button>`
+    + SECTIONS.slice(2).map(([k, t, ic]) => `<button data-act="go" data-to="${k}" class="${activeSec === k ? 'on' : ''}" aria-label="${t}">${ICON[ic]}<span class="lbl">${t}</span></button>`).join('');
+}
+function setActive(k) { activeSec = k; $$('[data-act="go"]').forEach(b => b.classList.toggle('on', b.dataset.to === k)); }
+let secObs = null;
+function observeSections() {
+  secObs?.disconnect(); if (!('IntersectionObserver' in window)) return;
+  secObs = new IntersectionObserver(es => { const v = es.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]; if (v) setActive(v.target.id); }, { rootMargin: '-35% 0px -55% 0px' });
+  SECTIONS.forEach(([k]) => { const el = document.getElementById(k); if (el) secObs.observe(el); });
 }
 function render() {
   if (!owner) return;
-  const y = window.scrollY; $('#view').innerHTML = `<div class="${animate ? 'view' : ''}">${viewPanel()}</div>`; animate = false; window.scrollTo(0, y);
+  const y = window.scrollY, first = animate, focusQ = document.activeElement?.id === 'tblQ';
+  $('#view').innerHTML = `<div class="${first ? 'enter' : ''}">${viewPanel()}</div>`; animate = false; window.scrollTo(0, y);
   document.documentElement.style.setProperty('--accent', OWNER_COLOR[owner]);
-  setSync(syncState);
+  document.documentElement.dataset.owner = owner;
+  setSync(syncState); renderDock(); observeSections();
+  if (focusQ) { const q = $('#tblQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  if (first) countUp($('#view'));
 }
 function renderSelFoot() {
   const u = (() => { try { return JSON.parse(store.get(LS.user, 'null')); } catch (e) { return null; } })();
   $('#selFoot').innerHTML = isConnected()
-    ? `${syncPill()}<span style="font-size:12.5px;color:#9AA3B5">${u?.email ? esc(u.email) : 'Conectado a Google Calendar'}</span>`
-    : `<button class="pill btn" data-act="connect">🔑 Iniciar sesión con Google</button><span style="font-size:12.5px;color:#9AA3B5">Para ver y editar tus turnos de Nexora</span>`;
+    ? `${syncPill()}<span class="mail">${u?.email ? esc(u.email) : 'Conectado a Google Calendar'}</span>`
+    : `<button class="btn primary" data-act="connect">Iniciar sesión con Google</button><span class="mail">Para ver y editar los turnos de Nexora</span>`;
   setSync(syncState);
 }
+function openGoal() {
+  const cur = parseFloat(store.get(goalKey(), '')) || '';
+  openSheet(`<h3>Objetivo del mes</h3><p class="ms">Cuánto quieres facturar cada mes en la agenda de ${DISPLAY[owner]}. Se guarda en este móvil.</p>
+    <form id="goalForm"><div class="f"><label for="g_val">Objetivo (€)</label><input id="g_val" type="number" min="1" step="any" inputmode="decimal" value="${cur}" placeholder="600" required></div>
+    <div class="mact"><button type="button" class="btn" data-act="closeSheet">Cancelar</button><button class="btn primary" type="submit">Guardar objetivo</button></div></form>`);
+  setTimeout(() => $('#g_val')?.focus({ preventScroll: true }), 80);
+}
+
+/* Brillo del cristal y lámina del pase: siguen al dedo o al ratón */
+document.addEventListener('pointermove', e => {
+  if (reduceMotion()) return;
+  const g = e.target.closest?.('.glass, .owner'); if (!g) return;
+  const r = g.getBoundingClientRect();
+  g.style.setProperty('--mx', (e.clientX - r.left).toFixed(0) + 'px'); g.style.setProperty('--my', (e.clientY - r.top).toFixed(0) + 'px');
+}, { passive: true });
+document.addEventListener('input', e => {
+  if (e.target.id === 'tblQ') { tableQ = e.target.value; tableAll = false; refreshTable(); }
+});
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'goalForm') return; e.preventDefault();
+  const v = parseFloat(String($('#g_val').value).replace(',', '.'));
+  if (!(v > 0)) { $('#g_val').focus(); return; }
+  store.set(goalKey(), String(v)); closeSheet(); render(); toast('Objetivo guardado');
+});
 
 /* ───────────── formulario ───────────── */
 let editingId = null;
 function openForm(it, presetDate) {
   editingId = it ? it.id : null;
   $('#mTitle').textContent = it ? 'Modificar turno' : 'Nuevo turno';
-  $('#mSub').textContent = it ? 'Puedes reasignarlo a otro DJ si hace falta.' : `Por defecto se añade a ${owner}; puedes cambiarlo abajo.`;
+  $('#mSub').textContent = it ? 'Puedes reasignarlo a otro DJ si hace falta.' : `Se añade a la agenda de ${DISPLAY[owner]}; puedes cambiarlo abajo.`;
   const dj = it ? (KNOWN.includes(it.dj) ? it.dj : owner) : owner;
   $('#f_dj').value = dj;
   $('#f_title').value = it ? it.title : ''; $('#f_lugar').value = it ? it.lugar : ''; $('#f_local').value = it ? it.local : '';
   $('#f_date').value = it ? it.date : (presetDate || todayStr()); $('#f_cache').value = it ? numStr(it.cache) : '';
   $('#f_start').value = it && !it.allDay ? it.start : ''; $('#f_end').value = it && !it.allDay ? it.end : ''; $('#f_llevar').value = it ? it.llevar : '';
-  $('#ferr').classList.remove('show'); $('#modal').classList.add('show'); setTimeout(() => $('#f_title').focus(), 50);
+  $('#ferr').classList.remove('show'); $('#modal').classList.add('show'); $('#modal').setAttribute('aria-hidden', 'false'); setTimeout(() => $('#f_title').focus({ preventScroll: true }), 80);
 }
 function openQuick(date) {
   openForm(null, date);
   $('#f_title').value = LACLUB.title; $('#f_lugar').value = LACLUB.lugar; $('#f_local').value = LACLUB.local;
   $('#f_start').value = LACLUB.start; $('#f_end').value = LACLUB.end; $('#f_llevar').value = LACLUB.llevar; $('#f_cache').value = LACLUB.cache[dowOf(date)] ?? '';
 }
-const closeModal = () => $('#modal').classList.remove('show');
+const closeModal = () => { $('#modal').classList.remove('show'); $('#modal').setAttribute('aria-hidden', 'true'); };
 function submitForm(ev) {
   ev.preventDefault();
   const v = id => $('#' + id).value.trim(), err = $('#ferr');
@@ -424,8 +625,8 @@ function deleteItem(id) {
 }
 
 /* ───────────── hojas: ajustes y elegir calendario ───────────── */
-const closeSheet = () => $('#sheet').classList.remove('show');
-function openSheet(html) { $('#sheetBody').innerHTML = html; $('#sheet').classList.add('show'); }
+const closeSheet = () => { $('#sheet').classList.remove('show'); $('#sheet').setAttribute('aria-hidden', 'true'); };
+function openSheet(html) { $('#sheetBody').innerHTML = html; $('#sheet').classList.add('show'); $('#sheet').setAttribute('aria-hidden', 'false'); }
 function openSettings() {
   const u = (() => { try { return JSON.parse(store.get(LS.user, 'null')); } catch (e) { return null; } })(), last = +store.get(LS.last, 0);
   openSheet(`<h3>Ajustes</h3><p class="ms">Los turnos se guardan en tu Google Calendar.</p>
@@ -443,9 +644,11 @@ async function openPickCal(list) {
 }
 
 /* ───────────── eventos de la interfaz ───────────── */
+/* Cambio de agenda con transición suave donde el navegador lo permite */
+function transition(fn) { if (document.startViewTransition && !reduceMotion()) document.startViewTransition(fn); else fn(); }
 function chooseOwner(o) {
-  owner = o; selDay = null; showAllPast = false; animate = true; calMonth = todayStr().slice(0, 7) + '-01';
-  $('#selector').classList.add('hidden'); $('#fab').classList.remove('hidden'); render(); window.scrollTo(0, 0);
+  owner = o; selDay = null; tableQ = ''; tableAll = false; tableTab = 'proximos'; activeSec = 'inicio'; animate = true; calMonth = todayStr().slice(0, 7) + '-01';
+  transition(() => { $('#selector').classList.add('hidden'); $('#dock').classList.remove('hidden'); render(); window.scrollTo(0, 0); });
   if (isConnected()) sync(false);
 }
 document.addEventListener('click', e => {
@@ -453,7 +656,7 @@ document.addEventListener('click', e => {
   const a = t.dataset.act, id = t.dataset.id, d = t.dataset.d;
   switch (a) {
     case 'own': chooseOwner(t.dataset.own); break;
-    case 'switch': $('#selector').classList.remove('hidden'); $('#fab').classList.add('hidden'); renderSelFoot(); break;
+    case 'switch': transition(() => { $('#selector').classList.remove('hidden'); $('#dock').classList.add('hidden'); renderSelFoot(); }); break;
     case 'connect': connectGoogle(); break;
     case 'sync': if (!isConnected()) connectGoogle(); else if (syncState === 'nocal') openPickCal(); else sync(true); break;
     case 'syncnow': closeSheet(); sync(true); break;
@@ -469,7 +672,11 @@ document.addEventListener('click', e => {
     case 'day': selDay = selDay === d ? null : d; if (selDay && selDay.slice(0, 7) !== calMonth.slice(0, 7)) calMonth = selDay.slice(0, 7) + '-01'; render(); break;
     case 'prev': calMonth = addDays(calMonth, -1).slice(0, 7) + '-01'; render(); break;
     case 'next': calMonth = addDays(calMonth, 32).slice(0, 7) + '-01'; render(); break;
-    case 'morePast': showAllPast = !showAllPast; render(); break;
+    case 'go': { const el = document.getElementById(t.dataset.to); if (el) { setActive(t.dataset.to); el.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' }); } break; }
+    case 'period': period = t.dataset.k; store.set('turnos.period', period); render(); countUp($('.kpis')); break;
+    case 'tblTab': tableTab = t.dataset.k; tableAll = false; render(); break;
+    case 'tblMore': tableAll = !tableAll; refreshTable(); break;
+    case 'goal': openGoal(); break;
     case 'closeModal': closeModal(); break;
   }
 });

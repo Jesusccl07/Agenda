@@ -1,6 +1,6 @@
 /* Service worker de Turnos DJ: permite abrir la app sin conexión.
    Estrategia: red primero (así siempre ves la última versión) y, si no hay red, lo guardado. */
-const CACHE = 'turnos-v1';
+const CACHE = 'turnos-v2';
 const ASSETS = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'img/clement.png', 'img/bota.png'];
 
@@ -17,6 +17,11 @@ self.addEventListener('fetch', e => {
   const r = e.request;
   if (r.method !== 'GET') return;
   const u = new URL(r.url);
+  /* Tipografías de Google Fonts: se guardan para que la app se vea igual sin conexión */
+  if (u.host === 'fonts.googleapis.com' || u.host === 'fonts.gstatic.com') {
+    e.respondWith(caches.open(CACHE).then(c => c.match(r).then(m => m || fetch(r).then(res => { if (res.ok || res.type === 'opaque') c.put(r, res.clone()); return res; }))));
+    return;
+  }
   if (u.origin !== location.origin) return;            /* Google (login y Calendar) siempre va directo a la red */
   e.respondWith(
     fetch(r).then(res => {

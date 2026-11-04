@@ -1,13 +1,15 @@
 # 🎧 Turnos DJ
 
-App móvil (PWA) con los turnos, cachés e ingresos de **Clement** y **DJ Bota**, leyendo y escribiendo en el calendario «Nexora» de Google Calendar. Funciona sin conexión.
+App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**, leyendo y escribiendo en el calendario «Nexora» de Google Calendar. Funciona sin conexión.
 
 Ábrela en: https://jesusccl07.github.io/agenda/turnos/
 
 (La dirección https://jesusccl07.github.io/agenda/ también lleva directamente a Turnos DJ.)
 
-- Al abrir eliges panel (Clement o DJ Bota). Los turnos marcados como *Two Generation's* salen en los dos.
-- Estadísticas, próximo turno con cuenta atrás, ingresos por mes (cobrado y previsto) y calendario con alta rápida («DJ LA CLUB»: viernes 80 €, sábado 100 €).
+- Al abrir eliges agenda (CLEMENT o DJ Bota). Los turnos marcados como *Two Generation's* salen en las dos.
+- Panel de administración con estilo *Liquid Glass*: paneles de cristal sobre luces de sala animadas (cian y violeta para CLEMENT, naranja y magenta para DJ Bota).
+- Cifras con minigráficas y comparación con el periodo anterior (este mes, este año o todo): ingresos, turnos, horas en cabina y caché medio.
+- Próximo turno con cuenta atrás en directo, próximos 7 días, gráfico de ingresos por mes (cobrado y previsto), tabla de turnos con buscador, calendario con alta rápida («DJ LA CLUB»: viernes 80 €, sábado 100 €), ranking de locales que más pagan y objetivo del mes.
 - Añadir, modificar y borrar turnos desde la app: se guardan en Google Calendar. Sin internet se guardan en el móvil y se envían al reconectar.
 - Se actualiza sola cada minuto con la app abierta.
 - Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
