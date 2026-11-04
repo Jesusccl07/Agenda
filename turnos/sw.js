@@ -1,6 +1,6 @@
 /* Service worker de Turnos DJ: permite abrir la app sin conexión.
    Estrategia: red primero (así siempre ves la última versión) y, si no hay red, lo guardado. */
-const CACHE = 'turnos-v2';
+const CACHE = 'turnos-v3';
 const ASSETS = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'img/clement.png', 'img/bota.png'];
 

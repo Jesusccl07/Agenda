@@ -1,6 +1,6 @@
 # 🎧 Turnos DJ
 
-App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**, leyendo y escribiendo en el calendario «Nexora» de Google Calendar. Funciona sin conexión.
+App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**, guardados en Google Calendar, en un calendario llamado «turnos_dj» de cada cuenta. Funciona sin conexión.
 
 Ábrela en: https://jesusccl07.github.io/Agenda/turnos/
 
@@ -14,14 +14,17 @@ App móvil (PWA) con los turnos, cachés e ingresos de **CLEMENT** y **DJ Bota**
 - Se actualiza sola cada minuto con la app abierta.
 - Cada turno usa en la descripción del evento el formato `🎤 DJ: … / 📍 Lugar / 🏢 Local / 💰 Caché / ⏰ Horario / 🕐 Duración / 🎒 Llevar`.
 
-## Usarla con otra cuenta de Google (por ejemplo, la de tu padre)
-Cada móvil inicia sesión con su propia cuenta y desde *Ajustes → Cambiar de cuenta* se puede pasar a otra. Para que otra cuenta funcione:
+## Calendarios: cada uno el suyo, Two Generation's en los dos
+- Cada cuenta de Google tiene su **propio calendario «turnos_dj»**. Al iniciar sesión la app lo busca; si no existe, renombra el antiguo «Nexora» de esa cuenta o crea uno nuevo.
+- Los turnos de CLEMENT o de DJ Bota se quedan solo en el calendario de quien los apunta.
+- Los turnos de **Two Generation's se copian en los dos calendarios**: añadirlos, modificarlos o borrarlos desde cualquiera de los dos se refleja en el otro (también si se cambian directamente en Google Calendar).
+- Para que la copia funcione, **cada uno comparte su «turnos_dj» con el otro**: Google Calendar (en el ordenador) → turnos_dj → *Configuración y uso compartido* → *Compartir con determinadas personas* → añade el correo del otro con el permiso **«Hacer cambios en eventos»** (el otro tiene que aceptar la invitación).
+- En *Ajustes* se ve tu calendario y si el del socio está compartido. Desde ahí también puedes *Cambiar de cuenta*.
 
-1. **Comparte el calendario Nexora** con esa cuenta: Google Calendar (en el ordenador) → Nexora → *Configuración y uso compartido* → *Compartir con determinadas personas* → añade su correo con el permiso **«Hacer cambios en eventos»**. Esa persona tiene que aceptar la invitación del correo.
-2. **Autoriza la cuenta en la app de Google**: si en Google Cloud Console la pantalla de consentimiento está en modo *Prueba* (Testing), añade su correo en *Google Auth Platform → Público (Audience) → Usuarios de prueba*. Si no, Google le mostrará «Acceso bloqueado».
-3. En su móvil abre el enlace, elige agenda, pulsa *Iniciar sesión con Google* y elige su cuenta. Si Google avisa de que la app no está verificada: *Configuración avanzada → Ir a…*.
+### Autorizar otra cuenta (por ejemplo, la de tu padre)
+Si en Google Cloud Console la pantalla de consentimiento está en modo *Prueba* (Testing), añade su correo en *Google Auth Platform → Público (Audience) → Usuarios de prueba*. Si no, Google le mostrará «Acceso bloqueado». Si Google avisa de que la app no está verificada: *Configuración avanzada → Ir a…*.
 
-Permisos que pide al iniciar sesión con Google: ver y editar eventos de calendario, ver la lista de calendarios y tu nombre/correo.
+Permisos que pide al iniciar sesión con Google: gestionar tus calendarios (para crear y renombrar «turnos_dj» y copiar los turnos de Two Generation's en el del socio) y ver tu nombre/correo.
 
 ## Instalarla como app
 Abre el enlace en Safari (iPhone) o Chrome (Android) → *Añadir a pantalla de inicio*.
