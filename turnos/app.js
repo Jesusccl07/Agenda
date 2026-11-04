@@ -826,6 +826,7 @@ function viewPanel() {
         <div class="glass seg" role="tablist" aria-label="Periodo de las cifras">${periods.map(([k, t]) => `<button role="tab" aria-selected="${period === k}" class="${period === k ? 'on' : ''}" data-act="period" data-k="${k}">${t}</button>`).join('')}</div></div>
       ${!isConnected() ? `<div class="glass connect o-connect"><div><b>Conecta tu Google Calendar</b><span>Inicia sesión: tus turnos se guardan en tu calendario «turnos_dj» (si no existe, se crea).</span></div><button class="btn primary" data-act="connect">Iniciar sesión con Google</button></div>`
         : waiting ? `<div class="glass hint o-connect"><div><b>Aún no ves los turnos de ${DISPLAY[owner]}</b><span>Saldrán aquí en cuanto ${DISPLAY[owner]} te comparta su calendario «${CALENDAR_NAME}» desde su app y abras el enlace que te envíe. Mientras, ves los que estén en tu calendario.</span></div><button class="btn" data-act="settings">Ver cómo</button></div>`
+        : importPending() ? `<div class="glass hint o-connect"><div><b>Turnos de la hoja listos para añadir</b><span>${plural(importPlan().filter(r => !r.dup).length, 'turno', 'turnos')} de Two Generation's de 2026 que aún no están en la app. Revísalos antes de añadirlos.</span></div><button class="btn primary" data-act="import">Revisar</button></div>`
         : waitingOwn ? `<div class="glass hint o-connect"><div><b>Conecta con el calendario de ${DISPLAY[pd]}</b><span>Cuando ${DISPLAY[pd]} te comparta su calendario «${CALENDAR_NAME}» (en su app: Ajustes → Compartir con tu socio) y abras el enlace que te envíe, verás sus turnos y los de Two Generation's de los dos.</span></div><button class="btn" data-act="settings">Ver cómo</button></div>` : ''}
       <div class="o-kpis">${kpisHTML(list, now)}</div>
       <div class="c-8 o-chart">${chartHTML(list, now)}</div>
@@ -881,6 +882,55 @@ function renderSelFoot() {
   $$('.owner').forEach(b => b.classList.toggle('mine', isConnected() && b.dataset.own === myDJ()));
   setSync(syncState);
 }
+/* ── Importar la hoja de turnos de Two Generation's (2026) sin duplicar los que ya estén ── */
+const IMPORT = { key: 'turnos.import.hoja2026', start: '22:00', end: '03:00', rows: [
+  /* fecha, caché, título, local, pueblo */
+  ['2026-04-30', 350, 'Villamayor (Mayos)', 'Mayos', 'Villamayor'],
+  ['2026-05-30', 300, 'Boda de plata Villarejo', 'Boda de plata', 'Villarejo'],
+  ['2026-06-13', 300, 'Boda El Labrador', 'El Labrador', 'Ciudad Real'],
+  ['2026-07-25', 300, 'Bar Los Peques', 'Bar Los Peques', 'Cabezarados'],
+  ['2026-08-08', 420, 'Sentidos del Cristo', 'Sentidos del Cristo', ''],
+  ['2026-08-14', 350, 'Villamayor', '', 'Villamayor'],
+  ['2026-08-15', 350, 'Villamayor', '', 'Villamayor'],
+  ['2026-08-16', 120, 'Abenójar', '', 'Abenójar'],
+  ['2026-08-22', 420, 'Sentidos del Cristo', 'Sentidos del Cristo', ''],
+  ['2026-08-29', 200, 'Boda Dacho', 'Josemix', ''],
+  ['2026-09-11', 380, 'Villamayor', '', 'Villamayor'],
+  ['2026-09-26', 400, 'Navacerrada', '', 'Navacerrada'],
+  ['2026-10-12', 300, 'Guardia Civil Puertollano', 'Guardia Civil', 'Puertollano'],
+  ['2026-10-31', 300, 'Halloween La Casona', 'La Casona', ''],
+  ['2026-11-07', 550, 'Boda Membrilleja', '', 'Membrilleja'],
+  ['2026-12-04', 350, 'Cumple Porzuna', '', 'Porzuna'],
+] };
+const plain = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const GENERIC = new Set(['boda', 'cumple', 'plata', 'bar', 'fiesta', 'fiestas']);
+/* ¿Ya está ese turno? Mismo día y (es de Two Generation's o coincide el sitio o el nombre) */
+function importPlan() {
+  const ex = allItems();
+  return IMPORT.rows.map(([date, cache, title, local, lugar]) => {
+    const words = plain(`${title} ${local} ${lugar}`).split(/[^a-zñ]+/).filter(w => w.length >= 4 && !GENERIC.has(w));
+    const dup = ex.find(i => i.date === date && (effDJ(i) === TWO_GEN || words.some(w => plain(`${i.title} ${i.local} ${i.lugar}`).includes(w))));
+    return { date, cache, title, local, lugar, dup };
+  });
+}
+function openImport() {
+  const plan = importPlan(), nuevos = plan.filter(r => !r.dup);
+  openSheet(`<h3>Turnos de la hoja</h3><p class="ms">${plan.length} turnos de Two Generation's de 2026. ${nuevos.length ? `Se añadirán ${plural(nuevos.length, 'turno nuevo', 'turnos nuevos')}` : 'Ya están todos en la app'}${plan.length - nuevos.length ? `; ${plan.length - nuevos.length} ya estaban y no se repiten` : ''}. Horario ${IMPORT.start}–${IMPORT.end} y sin reparto (lo ponéis vosotros).</p>
+    <div class="imp">${plan.map(r => `<div class="imp-r${r.dup ? ' dup' : ''}"><span class="d">${+r.date.slice(8)} ${MON_S[+r.date.slice(5, 7) - 1]}</span><span class="t">${esc(r.title)}${r.dup ? `<small>Ya está: «${esc(r.dup.title)}»</small>` : ''}</span><span class="c">${euro(r.cache)}</span></div>`).join('')}</div>
+    <div class="mact"><button class="btn" data-act="closeSheet">Cancelar</button>${nuevos.length ? `<button class="btn primary" data-act="doImport">Añadir ${plural(nuevos.length, 'turno', 'turnos')}</button>` : ''}</div>`);
+}
+function doImport() {
+  const nuevos = importPlan().filter(r => !r.dup);
+  for (const r of nuevos) {
+    const endDate = IMPORT.end <= IMPORT.start ? addDays(r.date, 1) : r.date;
+    items.push({ id: 'tmp_' + uid(), tg: '', title: r.title, dj: TWO_GEN, lugar: r.lugar, local: r.local, llevar: '', cache: r.cache, extra: [],
+      date: r.date, start: IMPORT.start, end: IMPORT.end, startMs: zonedToMs(r.date, IMPORT.start), endMs: zonedToMs(endDate, IMPORT.end), allDay: false, rev: 1, pending: 'create' });
+  }
+  store.set(IMPORT.key, '1'); closeSheet(); markDirty(); render();
+  toast(nuevos.length ? `${plural(nuevos.length, 'turno añadido', 'turnos añadidos')}: se están guardando en Google Calendar` : 'No había turnos nuevos');
+}
+const importPending = () => isConnected() && !store.get(IMPORT.key) && importPlan().some(r => !r.dup);
+
 function openGoal() {
   const cur = parseFloat(store.get(goalKey(), '')) || '';
   openSheet(`<h3>Objetivo del mes</h3><p class="ms">Cuánto quieres facturar cada mes en la agenda de ${DISPLAY[owner]}. Se guarda en este móvil.</p>
@@ -991,6 +1041,7 @@ function openSettings() {
     <p class="note">Para que ${pd ? DISPLAY[pd] : 'tu socio'} vea tus turnos en su app, escribe su correo, pulsa «Compartir» y envíale el enlace que te da la app. ${store.get(LS.partner) ? '' : `Para ver los suyos, ${pd ? DISPLAY[pd] : 'tu socio'} tiene que hacer lo mismo contigo desde su app.`} Los turnos del otro se ven solo en la app: en el Google Calendar de cada uno salen solo los suyos y los de Two Generation's.</p>
     <form class="share" id="shareForm"><input id="p_email" type="email" inputmode="email" autocomplete="email" placeholder="Correo de tu socio" value="${esc(store.get(LS.pmail) || '')}" aria-label="Correo de tu socio"><button class="btn primary" type="submit">Compartir</button></form>
     <div class="note" id="shareList"></div>
+    ${conn ? `<div class="kv"><span>Turnos de la hoja (2026)</span><span><button class="btn small" data-act="import">Revisar e importar</button></span></div>` : ''}
     ${misplaced ? `<div class="kv"><span>Tienes ${plural(misplaced, 'turno', 'turnos')} de ${DISPLAY[pd]} en tu calendario</span><span><button class="btn small" data-act="movePartner">Pasarlos al suyo</button></span></div>` : ''}
 
     <h4 class="sh">Avisos en el móvil</h4>
@@ -1144,6 +1195,8 @@ document.addEventListener('click', e => {
     case 'yearPrev': yearSel--; render(); break;
     case 'yearNext': yearSel++; render(); break;
     case 'excel': downloadExcel(); break;
+    case 'import': openImport(); break;
+    case 'doImport': doImport(); break;
     case 'closeModal': closeModal(); break;
   }
 });
