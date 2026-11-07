@@ -807,6 +807,78 @@ async function downloadExcel() {
   }
 }
 
+/* ── Filtrar ganancias por negocio (CLEMENT, DJ BOTA, Two Generation's) y por sitio ──
+   Los filtros se marcan y desmarcan: si no hay ninguno marcado, cuenta todo. */
+const siteOf = i => (i.local || i.lugar || 'Sin local').trim();
+const fKey = () => 'turnos.filter.' + owner;
+const getFilt = () => { let f; try { f = JSON.parse(store.get(fKey(), 'null')); } catch (e) {} f = f || {};
+  return { dj: Array.isArray(f.dj) ? f.dj : [], site: Array.isArray(f.site) ? f.site : [], per: ['mes', 'año', 'todo'].includes(f.per) ? f.per : 'año', more: !!f.more }; };
+const setFilt = f => store.set(fKey(), JSON.stringify(f));
+/* Lo que se lleva cada turno: el DJ de un turno suyo (menos el equipo); en Two Generation's, la parte del de esta agenda */
+const fEarn = i => effDJ(i) === TWO_GEN ? earn(i, owner) : earn(i);
+function filtData() {
+  const f = getFilt(), y = todayStr().slice(0, 4), m = todayStr().slice(0, 7);
+  const inPer = i => f.per === 'todo' || i.date.startsWith(f.per === 'mes' ? m : y);
+  const base = allItems().filter(i => KNOWN.includes(effDJ(i)) && inPer(i));
+  const byDJ = base.filter(i => !f.dj.length || f.dj.includes(effDJ(i)));
+  const list = byDJ.filter(i => !f.site.length || f.site.includes(siteOf(i))).sort(byStart);
+  const sites = {}; for (const i of byDJ) { const k = siteOf(i), x = sites[k] || (sites[k] = { n: 0, money: 0, lugar: i.lugar }); x.n++; x.money += fEarn(i); }
+  f.site.forEach(k => sites[k] || (sites[k] = { n: 0, money: 0, lugar: '' }));
+  return { f, list, sites: Object.entries(sites).sort((a, b) => b[1].money - a[1].money || a[0].localeCompare(b[0])),
+    total: list.reduce((s, i) => s + fEarn(i), 0), cache: list.reduce((s, i) => s + i.cache, 0), team: list.reduce((s, i) => s + teamOf(i), 0),
+    missing: list.filter(i => effDJ(i) === TWO_GEN && partOf(i, owner) === null).length };
+}
+function filterHTML() {
+  const d = filtData(), f = d.f, now = Date.now(), y = todayStr().slice(0, 4);
+  const pers = [['mes', 'Este mes'], ['año', `Año ${y}`], ['todo', 'Todo']];
+  const chip = (act, k, label, on, color) => `<button type="button" class="chip-t" data-act="${act}" data-k="${esc(k)}" aria-pressed="${on}"${color ? ` style="--accent:${color}"` : ''}>${label}</button>`;
+  const shownSites = f.more ? d.sites : d.sites.filter(([k], n) => n < 10 || f.site.includes(k));
+  const groups = {}; for (const i of d.list) { const k = siteOf(i), x = groups[k] || (groups[k] = { n: 0, money: 0, lugar: i.lugar }); x.n++; x.money += fEarn(i); }
+  const top = Object.entries(groups).sort((a, b) => b[1].money - a[1].money), max = top[0]?.[1].money || 1;
+  const byNeg = KNOWN.map(k => [k, d.list.filter(i => effDJ(i) === k)]).filter(([, l]) => l.length);
+  const active = f.dj.length + f.site.length;
+  return `<section class="glass panel filt" id="filtro"><div class="cal-h"><div class="ph" style="margin:0"><div><h3>Filtrar ganancias</h3><p>Elige negocio y sitio (o déjalos sin marcar para verlo todo)</p></div></div>
+      <div class="seg sm" role="tablist" aria-label="Periodo del filtro">${pers.map(([k, t]) => `<button role="tab" aria-selected="${f.per === k}" class="${f.per === k ? 'on' : ''}" data-act="fPer" data-k="${k}">${t}</button>`).join('')}</div></div>
+    <p class="f-lab">Negocio</p><div class="chips-pick">${KNOWN.map(k => chip('fDJ', k, k === TWO_GEN ? "Two Generation's" : DISPLAY[k], f.dj.includes(k), OWNER_COLOR[k])).join('')}</div>
+    <p class="f-lab">Sitio</p>${d.sites.length ? `<div class="chips-pick">${shownSites.map(([k, x]) => chip('fSite', k, `${esc(k)}<small>${x.n}</small>`, f.site.includes(k))).join('')}
+      ${d.sites.length > shownSites.length || f.more ? `<button type="button" class="btn small" data-act="fMore">${f.more ? 'Ver menos' : `Ver los ${d.sites.length}`}</button>` : ''}</div>` : `<div class="tbl-empty" style="text-align:left;padding:4px 0">No hay turnos en este periodo.</div>`}
+    <div class="f-res">
+      <div><div class="yr-big" style="margin-bottom:6px">${euro(d.total)}</div>
+        <div class="yr-row"><span><b>${d.list.length}</b> ${d.list.length === 1 ? 'turno' : 'turnos'}</span><span>Caché total <b>${euro(d.cache)}</b></span>${d.team ? `<span>Equipo <b>${euro(d.team)}</b></span>` : ''}${active ? `<button class="linkbtn" data-act="fClear">Quitar filtros</button>` : ''}</div>
+        ${byNeg.length > 1 ? `<div class="yr-row">${byNeg.map(([k, l]) => `<span><i class="dot" style="--dc:${OWNER_COLOR[k]}"></i>${k === TWO_GEN ? "Two Generation's" : DISPLAY[k]} <b>${euro(l.reduce((s, i) => s + fEarn(i), 0))}</b></span>`).join('')}</div>` : ''}
+        ${d.missing ? `<p class="note warn-note">${plural(d.missing, 'turno', 'turnos')} de Two Generation's sin reparto: no se suman hasta que pongas la parte de ${DISPLAY[owner]}.</p>` : ''}
+        ${f.dj.some(k => k !== owner && k !== TWO_GEN) && isConnected() && !store.get(LS.partner) ? `<p class="note">Faltan los turnos de ${DISPLAY[partnerDJ()] || 'tu socio'} hasta que conectéis los calendarios.</p>` : ''}
+        <button class="btn small" data-act="fExcel"${d.list.length ? '' : ' disabled'}>${ICON.down}Descargar Excel</button></div>
+      ${top.length ? `<div class="rank">${top.slice(0, 6).map(([k, x], n) => `<div class="rk"><span class="pos">${n + 1}</span><div style="min-width:0"><div class="nm">${esc(k)}</div><div class="sub">${plural(x.n, 'turno', 'turnos')}${x.lugar && x.lugar !== k ? ' · ' + esc(x.lugar) : ''}</div></div><span class="val">${euro(x.money)}</span>
+        <div class="meter"><i style="width:${x.money / max * 100}%"></i></div></div>`).join('')}</div>` : `<div class="tbl-empty">Ningún turno con estos filtros.</div>`}
+    </div>
+    <p class="note">En los turnos de Two Generation's cuenta la parte de ${DISPLAY[owner]}; en los de un DJ, lo suyo menos el equipo.</p></section>`;
+}
+function filtToggle(kind, k) {
+  const f = getFilt(), a = f[kind]; f[kind] = a.includes(k) ? a.filter(x => x !== k) : [...a, k];
+  setFilt(f); refreshFilter();
+}
+function refreshFilter() { const el = $('#filtro'); if (el) el.outerHTML = filterHTML(); else render(); }
+async function downloadFilterExcel() {
+  const d = filtData(), f = d.f, r2 = n => Math.round(n * 100) / 100, now = Date.now();
+  const tipo = i => effDJ(i) === TWO_GEN ? "Two Generation's" : DISPLAY[effDJ(i)];
+  const per = f.per === 'mes' ? `${MON_L[+todayStr().slice(5, 7) - 1]} ${todayStr().slice(0, 4)}` : f.per === 'año' ? `Año ${todayStr().slice(0, 4)}` : 'Todos los turnos';
+  const rows = [[`Ganancias filtradas (${DISPLAY[owner]}) · ${per}`],
+    [`Negocio: ${f.dj.length ? f.dj.map(k => k === TWO_GEN ? "Two Generation's" : DISPLAY[k]).join(', ') : 'Todos'}`], [`Sitio: ${f.site.length ? f.site.join(', ') : 'Todos'}`], [],
+    ['Fecha', 'Día', 'Turno', 'Local', 'Lugar', 'Negocio', 'Caché total (€)', 'Equipo (€)', 'Ganancia (€)', 'Estado'],
+    ...d.list.map(i => [i.date.split('-').reverse().join('/'), DOW_L[dowOf(i.date)], i.title, i.local, i.lugar, tipo(i), r2(i.cache), r2(teamOf(i)), r2(fEarn(i)),
+      effDJ(i) === TWO_GEN && partOf(i, owner) === null ? 'Falta el reparto' : i.endMs < now ? 'Cobrado' : 'Previsto']),
+    [], ['', '', 'TOTAL', '', '', '', r2(d.cache), r2(d.team), r2(d.total), '']];
+  const name = `Turnos-DJ_filtro_${DISPLAY[owner].replace(/\s+/g, '-')}`;
+  try {
+    const X = await loadXLSX(), wb = X.utils.book_new(), ws = X.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [12, 11, 26, 20, 16, 18, 15, 12, 14, 16].map(wch => ({ wch })); X.utils.book_append_sheet(wb, ws, 'Filtro'); X.writeFile(wb, name + '.xlsx'); toast('Excel descargado');
+  } catch (e) {
+    const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })); a.download = name + '.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast('Sin conexión: descargado en CSV (se abre con Excel)');
+  }
+}
 function greeting() {
   const h = +wall(Date.now()).time.slice(0, 2);
   return h >= 6 && h < 14 ? 'Buenos días' : h >= 14 && h < 21 ? 'Buenas tardes' : 'Buenas noches';
@@ -838,6 +910,7 @@ function viewPanel() {
       <div class="c-3 c-half o-goal">${goalHTML(list, now)}</div>
       <div class="c-7 c-half o-year">${yearHTML(yd)}</div>
       <div class="c-5 c-half o-team">${teamHTML(yd)}</div>
+      <div class="o-filt">${filterHTML()}</div>
     </div>`;
 }
 const reduceMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1195,6 +1268,12 @@ document.addEventListener('click', e => {
     case 'yearPrev': yearSel--; render(); break;
     case 'yearNext': yearSel++; render(); break;
     case 'excel': downloadExcel(); break;
+    case 'fDJ': filtToggle('dj', t.dataset.k); break;
+    case 'fSite': filtToggle('site', t.dataset.k); break;
+    case 'fPer': { const f = getFilt(); f.per = t.dataset.k; setFilt(f); refreshFilter(); break; }
+    case 'fMore': { const f = getFilt(); f.more = !f.more; setFilt(f); refreshFilter(); break; }
+    case 'fClear': { const f = getFilt(); f.dj = []; f.site = []; setFilt(f); refreshFilter(); break; }
+    case 'fExcel': downloadFilterExcel(); break;
     case 'import': openImport(); break;
     case 'doImport': doImport(); break;
     case 'closeModal': closeModal(); break;

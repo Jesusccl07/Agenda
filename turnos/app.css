@@ -71,7 +71,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
 /* En móvil y tablet primero lo urgente: el próximo turno y la semana */
 @media (max-width:999px){
   .o-hello{order:0}.o-connect{order:1}.o-pass{order:2}.o-kpis{order:3}.o-week{order:4}.o-table{order:5}
-  .o-year{order:6}.o-team{order:7}.o-chart{order:8}.o-cal{order:9}.o-venues{order:10}.o-goal{order:11}
+  .o-year{order:6}.o-team{order:7}.o-filt{order:7}.o-chart{order:8}.o-cal{order:9}.o-venues{order:10}.o-goal{order:11}
 }
 .o-goal{container-type:inline-size}
 @container (max-width:340px){.goal{flex-direction:column;text-align:center}.goal-t p{margin-bottom:10px}}
@@ -502,3 +502,16 @@ body:has(.overlay.show) #toast.show{transform:translate(-50%,0) scale(1)}
   *,*::before,*::after{animation:none!important;transition:none!important}
   .enter .spark .ln{stroke-dashoffset:0}
 }
+
+/* ───── Filtrar ganancias ───── */
+.filt .f-lab{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:14px 0 0}
+.filt .chips-pick{max-height:190px;overflow:auto;padding:2px}
+.filt .chip-t small{font-size:11.5px;font-weight:700;color:var(--text3);background:rgba(255,255,255,.08);border-radius:999px;padding:1px 7px}
+.filt .chip-t[aria-pressed=true] small{color:var(--text)}
+.f-res{display:grid;gap:18px 28px;margin-top:18px;padding-top:16px;border-top:1px solid var(--edge)}
+@media (min-width:800px){.f-res{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);align-items:start}}
+.filt .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dc);margin-right:6px;vertical-align:1px}
+.filt .rk .meter i{transition:width .5s var(--ease-out)}
+.filt .cal-h{flex-wrap:wrap;gap:10px 14px}
+.filt .cal-h .seg button{white-space:nowrap}
+@media (max-width:520px){.filt .cal-h .seg{width:100%}.filt .cal-h .seg button{flex:1}}
